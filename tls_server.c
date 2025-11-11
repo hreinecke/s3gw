@@ -34,7 +34,7 @@ static int parse_xml(http_parser *http, const char *body, size_t len)
 
 static size_t handle_request(SSL *ssl, http_parser *http)
 {
-	unsigned char buf[8192];
+	char buf[8192];
 	http_parser_settings settings;
 	size_t nread;
 	size_t nwritten;
@@ -55,13 +55,15 @@ static size_t handle_request(SSL *ssl, http_parser *http)
 				http->http_errno);
 			break;
 		}
-		sprintf("HTTP/1.1 200\r\nLocation: %s\r\nx-amz-bucket-arn: %s\r\n",
+		sprintf(buf,
+			"HTTP/1.1 200\r\nLocation: %s\r\nx-amz-bucket-arn: %s\r\n",
 			location, bucket);
-		nread = strlen((const char *)buf);
+		nread = strlen(buf);
 		if (SSL_write_ex(ssl, buf, nread, &nwritten) > 0 &&
 		    nwritten == nread) {
 			total += nwritten;
-			continue;
+			SSL_shutdown(ssl);
+			break;
 		}
 		fprintf(stderr, "Error writing response\n");
 		break;
@@ -98,14 +100,14 @@ int main(int argc, char *argv[])
 		fprintf(stderr, "Failed to create server SSL_CTX");
 		exit(1);
 	}
-
+#if 0
 	if (!SSL_CTX_set_min_proto_version(ctx, TLS1_3_VERSION)) {
 		SSL_CTX_free(ctx);
 		ERR_print_errors_fp(stderr);
 		fprintf(stderr, "Failed to set TLS 1.3");
 		exit(1);
 	}
-
+#endif
 	/*
 	 * Tolerate clients hanging up without a TLS "shutdown".
 	 * Appropriate in all application protocols which perform
@@ -130,6 +132,23 @@ int main(int argc, char *argv[])
 #endif
 	/* Apply the selection options */
 	SSL_CTX_set_options(ctx, opts);
+
+	if (SSL_CTX_use_certificate_chain_file(ctx, "server-cert.pem") <= 0) {
+		SSL_CTX_free(ctx);
+		ERR_print_errors_fp(stderr);
+		fprintf(stderr, "Failed to load the server certificate %s",
+			"server-cert.pem");
+		exit(1);
+	}
+
+	if (SSL_CTX_use_PrivateKey_file(ctx, "server-key.pem",
+					SSL_FILETYPE_PEM) <= 0) {
+		SSL_CTX_free(ctx);
+		ERR_print_errors_fp(stderr);
+		fprintf(stderr, "Error loading the server private key file, "
+			"possible key/cert mismatch???");
+		exit(1);
+	}
 
 	/*
 	 * Servers that want to enable session resumption must specify a
