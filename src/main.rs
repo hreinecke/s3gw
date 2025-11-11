@@ -2,7 +2,8 @@ use std::{
     io::{BufReader, prelude::*},
     net::{TcpListener, TcpStream},
 };
-use http::{Request, Response, StatusCode};
+use httparse::{Request, Status};
+use http::{Response, StatusCode};
 
 fn main() {
     let listener = TcpListener::bind("localhost:7878").unwrap();
@@ -21,17 +22,37 @@ fn handle_connection(stream: TcpStream) {
 	.map(|result| result.unwrap())
 	.take_while(|line| !line.is_empty())
 	.collect();
-    let request: Request<Vec<_>> = http_request.into();
 
-    let mut response: Response<_> = respond_to(request);
+    let mut headers = [httparse::EMPTY_HEADER; 16];
+    let mut req = Request::new(&mut headers);
+    let buf:String = http_request.into_iter()
+	.map(String::from)
+	.collect();
 
-    stream.write_all(response.as_bytes()).unwrap();
+    match req.parse(buf.as_bytes()) {
+	Ok(Status::Complete(offset)) => {
+	    println!("Request parsed successfully, offset {:?}", offset);
+	}
+	Ok(Status::Partial) => {
+	    println!("Request parsed partially");
+	}
+	Err(e) => {
+	    println!("Request error {:?}!", e);
+	}
+    }
+	   
+    let mut response: http::Response<_> = not_found().unwrap();
+    let mapped_response: http::Response<&[u8]> = response.map(|b| {
+	assert_eq!(b, "some string");
+	b.as_bytes()
+    });
+
+    stream.write_all(mapped_response.as_bytes()).unwrap();
 }
 
-fn respond_to(req: Request<()>) -> http::Result<Response<()>> {
-    let mut builder = Response::builder()
+fn not_found() -> http::Result<Response<()>> {
+    Response::builder()
 	.header("Location","eu-west-1")
-	.status(StatusCode::OK);
-
-    builder.body(())
+	.status(StatusCode::OK)
+	.body(())
 }
