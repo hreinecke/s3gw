@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CreateBucketConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+   <LocationConstraint>eu-west-1</LocationConstraint>
+   <Location>
+      <Type>LocalZone</Type>
+   </Location>
+   <Tags>
+      <Tag>
+         <Key>key</Key>
+         <Value>value</Value>
+      </Tag>
+   </Tags>
+</CreateBucketConfiguration>
