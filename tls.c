@@ -7,11 +7,6 @@
  *  https://www.openssl.org/source/license.html
  */
 
-/*
- * NB: Changes to this file should also be reflected in
- * doc/man7/ossl-guide-tls-server-block.pod
- */
-
 #include <string.h>
 
 #include <err.h>
@@ -30,6 +25,27 @@ static int parse_xml(http_parser *http, const char *body, size_t len)
 {
 	printf("data: %s\n", body);
 	return 0;
+}
+
+static int bucket_ok(char *buf, const char *loc, const char *arn)
+{
+	enum http_status s = 200;
+	size_t off = 0;
+	int ret;
+
+	ret = sprintf(buf, "HTTP/1.1 %d %s\r\n", s, http_status_str(s));
+	if (ret < 0)
+		return -errno;
+	off += ret;
+	ret = sprintf(buf + off, "Location: %s\r\n", loc);
+	if (ret < 0)
+		return -errno;
+	off += ret;
+	ret = sprintf(buf + off, "x-amz-bucket-arn: %s\r\n", arn);
+	if (ret < 0)
+		return -errno;
+	off += ret;
+	return off;
 }
 
 static size_t handle_request(SSL *ssl, http_parser *http)
@@ -55,10 +71,12 @@ static size_t handle_request(SSL *ssl, http_parser *http)
 				http->http_errno);
 			break;
 		}
-		sprintf(buf,
-			"HTTP/1.1 200\r\nLocation: %s\r\nx-amz-bucket-arn: %s\r\n",
-			location, bucket);
-		nread = strlen(buf);
+		ret = bucket_ok(buf, location, bucket);
+		if (ret < 0) {
+			fprintf(stderr, "Error formatting response\n");
+			break;
+		}
+		nread = ret;
 		if (SSL_write_ex(ssl, buf, nread, &nwritten) > 0 &&
 		    nwritten == nread) {
 			total += nwritten;
@@ -71,7 +89,6 @@ static size_t handle_request(SSL *ssl, http_parser *http)
 	return total;
 }
 
-/* Minimal TLS echo server. */
 int main(int argc, char *argv[])
 {
 	long opts;
@@ -81,7 +98,7 @@ int main(int argc, char *argv[])
 	http_parser *http;
 
 	if (argc != 2) {
-		fprintf(stderr, "Usage: %s [host:]port", argv[0]);
+		fprintf(stderr, "Usage: %s [host:]port\n", argv[0]);
 		exit(1);
 	}
 	hostport = argv[1];
@@ -100,14 +117,7 @@ int main(int argc, char *argv[])
 		fprintf(stderr, "Failed to create server SSL_CTX");
 		exit(1);
 	}
-#if 0
-	if (!SSL_CTX_set_min_proto_version(ctx, TLS1_3_VERSION)) {
-		SSL_CTX_free(ctx);
-		ERR_print_errors_fp(stderr);
-		fprintf(stderr, "Failed to set TLS 1.3");
-		exit(1);
-	}
-#endif
+
 	/*
 	 * Tolerate clients hanging up without a TLS "shutdown".
 	 * Appropriate in all application protocols which perform
@@ -123,13 +133,7 @@ int main(int argc, char *argv[])
 	 * handshake or connection rates.
 	 */
 	opts |= SSL_OP_NO_RENEGOTIATION;
-#if 0
-	/*
-	 * Most servers elect to use their own cipher or group preference
-	 * rather than that of the client.
-	 */
-	opts |= SSL_OP_SERVER_PREFERENCE;
-#endif
+
 	/* Apply the selection options */
 	SSL_CTX_set_options(ctx, opts);
 
