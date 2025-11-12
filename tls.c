@@ -52,10 +52,11 @@ static int parse_header_value(http_parser *http, const char *at, size_t len)
 static int parse_url(http_parser *http, const char *at, size_t len)
 {
 	char buf[2048];
+	const char *method = http_method_str(http->method);
 
 	memset(buf, 0, sizeof(buf));
 	strncpy(buf, at, len);
-	printf("urn: %s\n", buf);
+	printf("urn: %s %s\n", method, buf);
 	return 0;
 }
 
