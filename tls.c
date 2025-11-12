@@ -31,13 +31,21 @@ static int parse_xml(http_parser *http, const char *body, size_t len)
 
 static int parse_header(http_parser *http, const char *at, size_t len)
 {
-	printf("header: %s\n", at);
+	char buf[1024];
+
+	memset(buf, 0, sizeof(buf));
+	strncpy(buf, at, len);
+	printf("header: %s\n", buf);
 	return 0;
 }
 
 static int parse_header_value(http_parser *http, const char *at, size_t len)
 {
-	printf("value: %s\n", at);
+	char buf[1024];
+
+	memset(buf, 0, sizeof(buf));
+	strncpy(buf, at, len);
+	printf("value: %s\n", buf);
 	return 0;
 }
 
