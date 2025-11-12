@@ -19,6 +19,14 @@
 
 #include "http_parser.h"
 
+struct s3gw_ctx {
+	const char *hostport;
+	const char *cert;
+	const char *key;
+	SSL_CTX *ssl_ctx;
+	BIO *accept_bio;
+};
+
 static const char cache_id[] = "Simple S3 Gateway";
 
 static int parse_xml(http_parser *http, const char *body, size_t len)
@@ -80,7 +88,6 @@ static size_t handle_request(SSL *ssl, http_parser *http)
 		if (SSL_write_ex(ssl, buf, nread, &nwritten) > 0 &&
 		    nwritten == nread) {
 			total += nwritten;
-			SSL_shutdown(ssl);
 			break;
 		}
 		fprintf(stderr, "Error writing response\n");
@@ -89,30 +96,12 @@ static size_t handle_request(SSL *ssl, http_parser *http)
 	return total;
 }
 
-int main(int argc, char *argv[])
+void tls_setup(struct s3gw_ctx *ctx)
 {
 	long opts;
-	const char *hostport;
-	SSL_CTX *ctx = NULL;
-	BIO *acceptor_bio;
-	http_parser *http;
 
-	if (argc != 2) {
-		fprintf(stderr, "Usage: %s [host:]port\n", argv[0]);
-		exit(1);
-	}
-	hostport = argv[1];
-
-	http = malloc(sizeof(*http));
-	if (!http) {
-		fprintf(stderr, "Out of memory\n");
-		exit(1);
-	}
-	memset(http, 0, sizeof(*http));
-	http_parser_init(http, HTTP_REQUEST);
-
-	ctx = SSL_CTX_new(TLS_server_method());
-	if (ctx == NULL) {
+	ctx->ssl_ctx = SSL_CTX_new(TLS_server_method());
+	if (ctx->ssl_ctx == NULL) {
 		ERR_print_errors_fp(stderr);
 		fprintf(stderr, "Failed to create server SSL_CTX");
 		exit(1);
@@ -135,22 +124,22 @@ int main(int argc, char *argv[])
 	opts |= SSL_OP_NO_RENEGOTIATION;
 
 	/* Apply the selection options */
-	SSL_CTX_set_options(ctx, opts);
+	SSL_CTX_set_options(ctx->ssl_ctx, opts);
 
-	if (SSL_CTX_use_certificate_chain_file(ctx, "server-cert.pem") <= 0) {
-		SSL_CTX_free(ctx);
+	if (SSL_CTX_use_certificate_chain_file(ctx->ssl_ctx, ctx->cert) <= 0) {
+		SSL_CTX_free(ctx->ssl_ctx);
 		ERR_print_errors_fp(stderr);
 		fprintf(stderr, "Failed to load the server certificate %s",
-			"server-cert.pem");
+			ctx->cert);
 		exit(1);
 	}
 
-	if (SSL_CTX_use_PrivateKey_file(ctx, "server-key.pem",
+	if (SSL_CTX_use_PrivateKey_file(ctx->ssl_ctx, ctx->key,
 					SSL_FILETYPE_PEM) <= 0) {
-		SSL_CTX_free(ctx);
+		SSL_CTX_free(ctx->ssl_ctx);
 		ERR_print_errors_fp(stderr);
-		fprintf(stderr, "Error loading the server private key file, "
-			"possible key/cert mismatch???");
+		fprintf(stderr, "Error loading the server private key %s, "
+			"possible key/cert mismatch???", ctx->key);
 		exit(1);
 	}
 
@@ -159,8 +148,9 @@ int main(int argc, char *argv[])
 	 cache id byte array, that identifies the server application, and
 	 reduces the chance of inappropriate cache sharing.
 	*/
-	SSL_CTX_set_session_id_context(ctx, (void *)cache_id, sizeof(cache_id));
-	SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_SERVER);
+	SSL_CTX_set_session_id_context(ctx->ssl_ctx,
+				       (void *)cache_id, sizeof(cache_id));
+	SSL_CTX_set_session_cache_mode(ctx->ssl_ctx, SSL_SESS_CACHE_SERVER);
 
 	/*
 	 * Sessions older than this are considered a cache miss even if
@@ -169,66 +159,124 @@ int main(int argc, char *argv[])
 	 * a shorter timeout, on lightly loaded servers with sporadic
 	 * connections from any given client, a longer time may be appropriate.
 	 */
-	SSL_CTX_set_timeout(ctx, 3600);
+	SSL_CTX_set_timeout(ctx->ssl_ctx, 3600);
 
-	SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, NULL);
+	SSL_CTX_set_verify(ctx->ssl_ctx, SSL_VERIFY_NONE, NULL);
+}
 
+static void tls_listen(struct s3gw_ctx *ctx)
+{
 	/*
 	 * Create a listener socket wrapped in a BIO.
 	 * The first call to BIO_do_accept() initialises the socket
 	 */
-	acceptor_bio = BIO_new_accept(hostport);
-	if (acceptor_bio == NULL) {
-		SSL_CTX_free(ctx);
+	ctx->accept_bio = BIO_new_accept(ctx->hostport);
+	if (ctx->accept_bio == NULL) {
+		SSL_CTX_free(ctx->ssl_ctx);
 		ERR_print_errors_fp(stderr);
-		fprintf(stderr, "Error creating acceptor bio");
+		fprintf(stderr, "Error creating accept bio");
 		exit(1);
 	}
 
-	BIO_set_bind_mode(acceptor_bio, BIO_BIND_REUSEADDR);
-	if (BIO_do_accept(acceptor_bio) <= 0) {
-		SSL_CTX_free(ctx);
+	BIO_set_bind_mode(ctx->accept_bio, BIO_BIND_REUSEADDR);
+	if (BIO_do_accept(ctx->accept_bio) <= 0) {
+		SSL_CTX_free(ctx->ssl_ctx);
 		ERR_print_errors_fp(stderr);
-		fprintf(stderr, "Error setting up acceptor socket");
+		fprintf(stderr, "Error setting up accept socket");
 		exit(1);
 	}
+}
+
+static int tls_wait_for_connection(struct s3gw_ctx *ctx)
+{
+	/* Pristine error stack for each new connection */
+	ERR_clear_error();
+
+	/* Wait for the next client to connect */
+	return BIO_do_accept(ctx->accept_bio);
+}
+
+static SSL *tls_accept(struct s3gw_ctx *ctx)
+{
+	BIO *client_bio;
+	SSL *ssl;
+	int ret;
+
+	/* Pop the client connection from the BIO chain */
+	client_bio = BIO_pop(ctx->accept_bio);
+	fprintf(stderr, "New client connection accepted\n");
+
+	/* Associate a new SSL handle with the new connection */
+	if ((ssl = SSL_new(ctx->ssl_ctx)) == NULL) {
+		ERR_print_errors_fp(stderr);
+		fprintf(stderr, "Error creating SSL handle for new connection");
+		BIO_free(client_bio);
+		return NULL;
+	}
+	SSL_set_bio(ssl, client_bio, client_bio);
+
+	/* Attempt an SSL handshake with the client */
+	ret = SSL_accept(ssl);
+	if (ret <= 0) {
+		ERR_print_errors_fp(stderr);
+		fprintf(stderr, "Error performing SSL handshake with client");
+		SSL_free(ssl);
+		return NULL;
+	}
+	return ssl;
+}
+
+int main(int argc, char *argv[])
+{
+	char *default_cert = "server-cert.pem";
+	char *default_key = "server-key.pem";
+	struct s3gw_ctx *ctx = NULL;
+	http_parser *http;
+
+	ctx = malloc(sizeof(*ctx));
+	if (!ctx) {
+		fprintf(stderr, "Out of memory\n");
+		exit(1);
+	}
+	ctx->cert = default_cert;
+	ctx->key = default_key;
+
+	if (argc != 2) {
+		fprintf(stderr, "Usage: %s [host:]port\n", argv[0]);
+		free(ctx);
+		exit(1);
+	}
+	ctx->hostport = argv[1];
+
+	http = malloc(sizeof(*http));
+	if (!http) {
+		fprintf(stderr, "Out of memory\n");
+		free(ctx);
+		exit(1);
+	}
+	memset(http, 0, sizeof(*http));
+
+	tls_setup(ctx);
+
+	tls_listen(ctx);
 
 	/* Wait for incoming connection */
 	for (;;) {
-		BIO *client_bio;
 		SSL *ssl;
 		size_t total;
 
-		/* Pristine error stack for each new connection */
-		ERR_clear_error();
-
-		/* Wait for the next client to connect */
-		if (BIO_do_accept(acceptor_bio) <= 0) {
+		if (tls_wait_for_connection(ctx) <= 0) {
 			/* Client went away before we accepted the connection */
 			continue;
 		}
 
-		/* Pop the client connection from the BIO chain */
-		client_bio = BIO_pop(acceptor_bio);
-		fprintf(stderr, "New client connection accepted\n");
-
-		/* Associate a new SSL handle with the new connection */
-		if ((ssl = SSL_new(ctx)) == NULL) {
-			ERR_print_errors_fp(stderr);
-			warnx("Error creating SSL handle for new connection");
-			BIO_free(client_bio);
+		ssl = tls_accept(ctx);
+		if (!ssl)
 			continue;
-		}
-		SSL_set_bio(ssl, client_bio, client_bio);
 
-		/* Attempt an SSL handshake with the client */
-		if (SSL_accept(ssl) <= 0) {
-			ERR_print_errors_fp(stderr);
-			warnx("Error performing SSL handshake with client");
-			SSL_free(ssl);
-			continue;
-		}
+		http_parser_init(http, HTTP_REQUEST);
 		total = handle_request(ssl, http);
+		SSL_shutdown(ssl);
 		fprintf(stderr, "Client connection closed, %zu bytes sent\n",
 			total);
 		SSL_free(ssl);
@@ -237,7 +285,7 @@ int main(int argc, char *argv[])
 	/*
 	 * Unreachable placeholder cleanup code, the above loop runs forever.
 	 */
-	SSL_CTX_free(ctx);
-	free(http);
+	SSL_CTX_free(ctx->ssl_ctx);
+	free(ctx);
 	return 0;
 }
