@@ -158,6 +158,7 @@ static int format_response(struct s3gw_request *req, char *buf)
 	char location[] = "eu-west-1";
 	char bucket[] = "arn:2e28574b-3276-44a1-8e00-b3de937c07c0";
 	int ret;
+	size_t off = 0;
 	char data[4096], tstamp[256];
 	time_t cur_time = time(NULL);
 	struct tm *cur_tm = gmtime(&cur_time);
@@ -168,17 +169,25 @@ static int format_response(struct s3gw_request *req, char *buf)
 		break;
 	case IMDS_GET_CREDENTIALS:
 		strftime(tstamp, 256, "%Y-%m-%dT%TZ", cur_tm);
-		sprintf(data,"{\n");
-		sprintf(data, "\"Code\" : \"Success\"\n");
-		sprintf(data, "\"LastUpdated\" : \"%s\"\n", tstamp);
-		sprintf(data, "\"Type\" : \"AWS-HMAC\"\n");
-		sprintf(data, "\"AccessKeyId\" : \"ASIAIOSFODNN7EXAMPLE\"\n");
-		sprintf(data, "\"SecretAccessKey\" : \"wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY\"\n");
-		sprintf(data, "\"Token\" : \"%s\"\n", s3gw_token);
+		ret = sprintf(data,"{\n");
+		off += ret;
+		ret = sprintf(data + off, "\"Code\" : \"Success\"\n");
+		off += ret;
+		ret = sprintf(data + off, "\"LastUpdated\" : \"%s\"\n", tstamp);
+		off += ret;
+		ret = sprintf(data, "\"Type\" : \"AWS-HMAC\"\n");
+		off += ret;
+		ret = sprintf(data, "\"AccessKeyId\" : \"ASIAIOSFODNN7EXAMPLE\"\n");
+		off += ret;
+		ret = sprintf(data, "\"SecretAccessKey\" : \"wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY\"\n");
+		off += ret;
+		ret = sprintf(data, "\"Token\" : \"%s\"\n", s3gw_token);
+		off += ret;
 		cur_time += 3600;
 		cur_tm = gmtime(&cur_time);
 		strftime(tstamp, 256, "%Y-%m-%dT%TZ", cur_tm);
-		sprintf(data, "\"Expiration\" : \"%s\"\n}\n", tstamp);
+		ret = sprintf(data, "\"Expiration\" : \"%s\"\n}\n", tstamp);
+		off += ret;
 		ret = put_ok(buf, data);
 		break;
 	default:
