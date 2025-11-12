@@ -3,15 +3,18 @@
  */
 
 #include <string.h>
-
+#include <stdbool.h>
 #include <sys/socket.h>
 #include <sys/select.h>
 
 #include <openssl/bio.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <uuid/uuid.h>
 
 #include "http_parser.h"
+
+#include "s3_api.h"
 
 struct s3gw_ctx {
 	const char *hostport;
@@ -21,7 +24,15 @@ struct s3gw_ctx {
 	BIO *accept_bio;
 };
 
+struct s3gw_request {
+	enum s3_api_ops op;
+	char *host;
+	void *next_hdr;
+};
+
 static const char cache_id[] = "Simple S3 Gateway";
+
+static uuid_t s3gw_uuid;
 
 static int parse_xml(http_parser *http, const char *body, size_t len)
 {
@@ -31,31 +42,61 @@ static int parse_xml(http_parser *http, const char *body, size_t len)
 
 static int parse_header(http_parser *http, const char *at, size_t len)
 {
+	struct s3gw_request *req = http->data;
 	char buf[1024];
 
-	memset(buf, 0, sizeof(buf));
-	strncpy(buf, at, len);
-	printf("header: %s\n", buf);
+	if (!strncmp(at, "Host", len)) {
+		req->next_hdr = req->host;
+	} else {
+		req->next_hdr = NULL;
+		memset(buf, 0, sizeof(buf));
+		strncpy(buf, at, len);
+		printf("header: %s\n", buf);
+	}
 	return 0;
 }
 
 static int parse_header_value(http_parser *http, const char *at, size_t len)
 {
+	struct s3gw_request *req = http->data;
 	char buf[1024];
 
-	memset(buf, 0, sizeof(buf));
-	strncpy(buf, at, len);
-	printf("value: %s\n", buf);
+	if (req->next_hdr == req->host) {
+		asprintf(&req->host, at);
+		req->host[len] = '\0';
+		req->next_hdr = NULL;
+	} else {
+		memset(buf, 0, sizeof(buf));
+		strncpy(buf, at, len);
+		printf("value: %s\n", buf);
+	}
 	return 0;
 }
 
 static int parse_url(http_parser *http, const char *at, size_t len)
 {
+	struct s3gw_request *req = http->data;
 	char buf[2048];
 	const char *method = http_method_str(http->method);
 
 	memset(buf, 0, sizeof(buf));
 	strncpy(buf, at, len);
+	switch (http->method) {
+	case HTTP_PUT:
+		if (!strncmp(at, "/latest/api/token", len)) {
+			req->op = IMDS_GET_METADATA_VERSIONS;
+		}
+		break;
+	case HTTP_GET:
+		if (!strncmp(at, "/latest/meta-data/iam/security-credentials",
+			     len)) {
+			req->op = IMDS_GET_CREDENTIALS;
+		}
+		break;
+	default:
+		break;
+	}
+			
 	printf("urn: %s %s\n", method, buf);
 	return 0;
 }
@@ -81,16 +122,61 @@ static int bucket_ok(char *buf, const char *loc, const char *arn)
 	return off;
 }
 
+static int put_ok(char *buf, const char *data)
+{
+	enum http_status s = HTTP_STATUS_OK;
+	size_t off = 0, len = 0;
+	int ret;
+
+	ret = sprintf(buf, "HTTP/1.1 %d %s\r\n", s, http_status_str(s));
+	if (ret < 0)
+		return -errno;
+	off += ret;
+
+	if (data)
+		len = strlen(data);
+	ret = sprintf(buf + off, "Content-Length: %ld\r\n\r\n", len);
+	if (ret < 0)
+		return -errno;
+	off += ret;
+	if (data) {
+		ret = sprintf(buf + off, "%s\r\n\r\n", data);
+		if (ret < 0)
+			return -errno;
+		off += ret;
+	}
+	return off;
+}
+
+static int format_response(struct s3gw_request *req, char *buf)
+{
+	char location[] = "eu-west-1";
+	char bucket[] = "arn:2e28574b-3276-44a1-8e00-b3de937c07c0";
+	int ret;
+	char data[32];
+
+	if (req->op == IMDS_GET_METADATA_VERSIONS) {
+		uuid_unparse(s3gw_uuid, data);
+		ret = put_ok(buf, data);
+	} else {
+		ret = bucket_ok(buf, location, bucket);
+	}
+	return ret;
+}
+
 static size_t handle_request(SSL *ssl, http_parser *http)
 {
+	struct s3gw_request req;
 	char buf[8192];
 	http_parser_settings settings;
 	size_t nread;
 	size_t nwritten;
 	size_t total = 0;
-	char location[] = "eu-west-1";
-	char bucket[] = "arn:2e28574b-3276-44a1-8e00-b3de937c07c0";
 
+	memset(&req, 0, sizeof(req));
+	req.op = API_OPS_UNKNOWN;
+
+	http->data = &req;
 	memset(&settings, 0, sizeof(settings));
 	settings.on_body = parse_xml;
 	settings.on_header_field = parse_header;
@@ -107,7 +193,8 @@ static size_t handle_request(SSL *ssl, http_parser *http)
 				http->http_errno);
 			break;
 		}
-		ret = bucket_ok(buf, location, bucket);
+
+		ret = format_response(&req, buf);
 		if (ret < 0) {
 			fprintf(stderr, "Error formatting response\n");
 			break;
@@ -261,6 +348,8 @@ int main(int argc, char *argv[])
 	char *default_key = "server-key.pem";
 	struct s3gw_ctx *ctx = NULL;
 	http_parser *http;
+
+	uuid_generate(s3gw_uuid);
 
 	ctx = malloc(sizeof(*ctx));
 	if (!ctx) {
