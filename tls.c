@@ -93,7 +93,7 @@ static int parse_url(http_parser *http, const char *at, size_t len)
 		}
 		break;
 	case HTTP_GET:
-		if (!strncmp(at, "/latest/meta-data/iam/security-credentials",
+		if (!strncmp(at, "/latest/meta-data/iam/security-credentials/",
 			     len)) {
 			req->op = IMDS_GET_CREDENTIALS;
 		}
