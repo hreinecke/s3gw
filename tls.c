@@ -27,12 +27,12 @@ struct s3gw_ctx {
 struct s3gw_request {
 	enum s3_api_ops op;
 	char *host;
+	char *token;
 	void *next_hdr;
 };
 
 static const char cache_id[] = "Simple S3 Gateway";
-
-static uuid_t s3gw_uuid;
+static const char s3gw_token[] = "76a46a30-357b-4362-acfb-4d3d2ac6ee2b";
 
 static int parse_xml(http_parser *http, const char *body, size_t len)
 {
@@ -47,6 +47,8 @@ static int parse_header(http_parser *http, const char *at, size_t len)
 
 	if (!strncmp(at, "Host", len)) {
 		req->next_hdr = req->host;
+	} else if (!strncmp(at, "x-aws-ec2-metadata-token", len)) {
+		req->next_hdr = req->token;
 	} else {
 		req->next_hdr = NULL;
 		memset(buf, 0, sizeof(buf));
@@ -64,12 +66,15 @@ static int parse_header_value(http_parser *http, const char *at, size_t len)
 	if (req->next_hdr == req->host) {
 		asprintf(&req->host, at);
 		req->host[len] = '\0';
-		req->next_hdr = NULL;
+	} else if (req->next_hdr == req->token) {
+		asprintf(&req->token, at);
+		req->token[len] = '\0';
 	} else {
 		memset(buf, 0, sizeof(buf));
 		strncpy(buf, at, len);
 		printf("value: %s\n", buf);
 	}
+	req->next_hdr = NULL;
 	return 0;
 }
 
@@ -153,13 +158,32 @@ static int format_response(struct s3gw_request *req, char *buf)
 	char location[] = "eu-west-1";
 	char bucket[] = "arn:2e28574b-3276-44a1-8e00-b3de937c07c0";
 	int ret;
-	char data[32];
+	char data[4096], tstamp[256];
+	time_t cur_time = time(NULL);
+	struct tm *cur_tm = gmtime(&cur_time);
 
-	if (req->op == IMDS_GET_METADATA_VERSIONS) {
-		uuid_unparse(s3gw_uuid, data);
+	switch (req->op) {
+	case IMDS_GET_METADATA_VERSIONS:
+		ret = put_ok(buf, s3gw_token);
+		break;
+	case IMDS_GET_CREDENTIALS:
+		strftime(tstamp, 256, "%Y-%m-%dT%TZ", cur_tm);
+		sprintf(data,"{\n");
+		sprintf(data, "\"Code\" : \"Success\"\n");
+		sprintf(data, "\"LastUpdated\" : \"%s\"\n", tstamp);
+		sprintf(data, "\"Type\" : \"AWS-HMAC\"\n");
+		sprintf(data, "\"AccessKeyId\" : \"ASIAIOSFODNN7EXAMPLE\"\n");
+		sprintf(data, "\"SecretAccessKey\" : \"wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY\"\n");
+		sprintf(data, "\"Token\" : \"%s\"\n", s3gw_token);
+		cur_time += 3600;
+		cur_tm = gmtime(&cur_time);
+		strftime(tstamp, 256, "%Y-%m-%dT%TZ", cur_tm);
+		sprintf(data, "\"Expiration\" : \"%s\"\n}\n", tstamp);
 		ret = put_ok(buf, data);
-	} else {
+		break;
+	default:
 		ret = bucket_ok(buf, location, bucket);
+		break;
 	}
 	return ret;
 }
@@ -199,6 +223,7 @@ static size_t handle_request(SSL *ssl, http_parser *http)
 			fprintf(stderr, "Error formatting response\n");
 			break;
 		}
+		printf("Response:\n%s\n", buf);
 		nread = ret;
 		if (SSL_write_ex(ssl, buf, nread, &nwritten) > 0 &&
 		    nwritten == nread) {
@@ -348,8 +373,6 @@ int main(int argc, char *argv[])
 	char *default_key = "server-key.pem";
 	struct s3gw_ctx *ctx = NULL;
 	http_parser *http;
-
-	uuid_generate(s3gw_uuid);
 
 	ctx = malloc(sizeof(*ctx));
 	if (!ctx) {
