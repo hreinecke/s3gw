@@ -49,6 +49,16 @@ static int parse_header_value(http_parser *http, const char *at, size_t len)
 	return 0;
 }
 
+static int parse_url(http_parser *http, const char *at, size_t len)
+{
+	char buf[2048];
+
+	memset(buf, 0, sizeof(buf));
+	strncpy(buf, at, len);
+	printf("urn: %s\n", buf);
+	return 0;
+}
+
 static int bucket_ok(char *buf, const char *loc, const char *arn)
 {
 	enum http_status s = 200;
@@ -84,6 +94,7 @@ static size_t handle_request(SSL *ssl, http_parser *http)
 	settings.on_body = parse_xml;
 	settings.on_header_field = parse_header;
 	settings.on_header_value = parse_header_value;
+	settings.on_url = parse_url;
 
 	while (SSL_read_ex(ssl, buf, sizeof(buf), &nread) > 0) {
 		int ret;
