@@ -175,18 +175,22 @@ static int format_response(struct s3gw_request *req, char *buf)
 		off += ret;
 		ret = sprintf(data + off, "\"LastUpdated\" : \"%s\"\n", tstamp);
 		off += ret;
-		ret = sprintf(data, "\"Type\" : \"AWS-HMAC\"\n");
+		ret = sprintf(data + off, "\"Type\" : \"AWS-HMAC\"\n");
 		off += ret;
-		ret = sprintf(data, "\"AccessKeyId\" : \"ASIAIOSFODNN7EXAMPLE\"\n");
+		ret = sprintf(data + off,
+			      "\"AccessKeyId\" : \"ASIAIOSFODNN7EXAMPLE\"\n");
 		off += ret;
-		ret = sprintf(data, "\"SecretAccessKey\" : \"wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY\"\n");
+		ret = sprintf(data + off,
+			      "\"SecretAccessKey\" : \"wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY\"\n");
 		off += ret;
-		ret = sprintf(data, "\"Token\" : \"%s\"\n", s3gw_token);
+		ret = sprintf(data + off,
+			      "\"Token\" : \"%s\"\n", s3gw_token);
 		off += ret;
 		cur_time += 3600;
 		cur_tm = gmtime(&cur_time);
 		strftime(tstamp, 256, "%Y-%m-%dT%TZ", cur_tm);
-		ret = sprintf(data, "\"Expiration\" : \"%s\"\n}\n", tstamp);
+		ret = sprintf(data + off,
+			      "\"Expiration\" : \"%s\"\n}\n", tstamp);
 		off += ret;
 		ret = put_ok(buf, data);
 		break;
