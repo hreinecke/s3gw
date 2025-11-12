@@ -94,10 +94,11 @@ static int parse_url(http_parser *http, const char *at, size_t len)
 		}
 		break;
 	case HTTP_GET:
-		if (strcmp(at, cred_url) > 0) {
-			req->op = IMDS_GET_ROLE_CREDENTIALS;
-		} else if (!strncmp(at, cred_url, len)) {
-			req->op = IMDS_GET_CREDENTIALS;
+		if (!strncmp(at, cred_url, len)) {
+			if (len > strlen(cred_url))
+				req->op = IMDS_GET_ROLE_CREDENTIALS;
+			else
+				req->op = IMDS_GET_CREDENTIALS;
 		}
 		break;
 	default:
