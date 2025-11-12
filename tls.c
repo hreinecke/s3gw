@@ -81,6 +81,7 @@ static int parse_header_value(http_parser *http, const char *at, size_t len)
 static int parse_url(http_parser *http, const char *at, size_t len)
 {
 	struct s3gw_request *req = http->data;
+	char cred_url[] = "/latest/meta-data/iam/security-credentials/";
 	char buf[2048];
 	const char *method = http_method_str(http->method);
 
@@ -93,8 +94,9 @@ static int parse_url(http_parser *http, const char *at, size_t len)
 		}
 		break;
 	case HTTP_GET:
-		if (!strncmp(at, "/latest/meta-data/iam/security-credentials/",
-			     len)) {
+		if (strcmp(at, cred_url) > 0) {
+			req->op = IMDS_GET_ROLE_CREDENTIALS;
+		} else if (!strncmp(at, cred_url, len)) {
 			req->op = IMDS_GET_CREDENTIALS;
 		}
 		break;
@@ -168,6 +170,9 @@ static int format_response(struct s3gw_request *req, char *buf)
 		ret = put_ok(buf, s3gw_token);
 		break;
 	case IMDS_GET_CREDENTIALS:
+		ret = put_ok(buf, "default-role\r\n");
+		break;
+	case IMDS_GET_ROLE_CREDENTIALS:
 		strftime(tstamp, 256, "%Y-%m-%dT%TZ", cur_tm);
 		ret = sprintf(data,"{\n");
 		off += ret;
