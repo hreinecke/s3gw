@@ -3,13 +3,17 @@ OBJS := tls.o http_parser.o
 LIBS := -lssl -lcrypto
 CFLAGS = -Wall -g
 CERT := server-cert.pem
+KEY := server-key.pem
 
-all: $(PRG) $(CERT)
+all: $(PRG) $(CERT) $(KEY)
 
-s3gw: $(OBJS)
+clean:
+	rm -f $(PRG) $(CERT) $(OBJS)
+
+$(PRG): $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
 
 tls.o: tls.c http_parser.h
 
-server-cert.pem:
-	openssl req -x509 -newkey rsa:4096 -keyout server-key.pem -out server-cert.pem -sha256 -days 365 -nodes -subj "/CN=localhost"
+$(CERT):
+	openssl req -x509 -newkey rsa:4096 -keyout $(KEY) -out $(CERT) -sha256 -days 365 -nodes -subj "/CN=localhost"
