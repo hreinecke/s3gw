@@ -34,6 +34,19 @@ struct s3gw_request {
 static const char cache_id[] = "Simple S3 Gateway";
 static const char s3gw_token[] = "76a46a30-357b-4362-acfb-4d3d2ac6ee2b";
 
+static const char default_secret_key[] =
+	"wJalrXUtnFEMI/K7MDENG/bPxRfiCYzEXAMPLEKEY";
+
+static const char default_access_key[] =
+	"AKIAIOSFODNN7EXAMPLE";
+
+static const char default_token[] =
+	"AQoDYXdzEPT//////////wEXAMPLEtc764bNrC9SAPBSM22wDOk4x4HIZ8j4FZTwdQW"
+	"LWsKWHGBuFqwAeMicRXmxfpSPfIeoIYRqTflfKD8YUuwthAx7mSEI/qkPpKPi/kMcGd"
+	"QrmGdeehM4IC1NtBmUpp2wUE8phUZampKsburEDy0KPkyQDYwT7WZ0wq5VSXDvp75YU"
+	"9HFvlRd8Tx6q6fE8YQcHNVXAkiY9q6d+xo0rKwT38xVqr7ZD0u0iPPkUL64lIZbqBAz"
+	"+scqKmlzm8FDrypNC9Yjc8fPOLn9FX9KSYvKTr4rvx3iSIlTJabIQwj2ICCR/oLxBA==";
+
 static int parse_xml(http_parser *http, const char *body, size_t len)
 {
 	printf("data: %s\n", body);
@@ -94,7 +107,7 @@ static int parse_url(http_parser *http, const char *at, size_t len)
 		}
 		break;
 	case HTTP_GET:
-		if (!strncmp(at, cred_url, len)) {
+		if (!strncmp(at, cred_url, strlen(cred_url))) {
 			if (len > strlen(cred_url))
 				req->op = IMDS_GET_ROLE_CREDENTIALS;
 			else
@@ -171,7 +184,7 @@ static int format_response(struct s3gw_request *req, char *buf)
 		ret = put_ok(buf, s3gw_token);
 		break;
 	case IMDS_GET_CREDENTIALS:
-		ret = put_ok(buf, "default-role\r\n");
+		ret = put_ok(buf, "s3gw\r\n");
 		break;
 	case IMDS_GET_ROLE_CREDENTIALS:
 		strftime(tstamp, 256, "%Y-%m-%dT%TZ", cur_tm);
@@ -184,13 +197,16 @@ static int format_response(struct s3gw_request *req, char *buf)
 		ret = sprintf(data + off, "\"Type\" : \"AWS-HMAC\"\n");
 		off += ret;
 		ret = sprintf(data + off,
-			      "\"AccessKeyId\" : \"ASIAIOSFODNN7EXAMPLE\"\n");
+			      "\"AccessKeyId\" : \"%s\"\n",
+			      default_access_key);
 		off += ret;
 		ret = sprintf(data + off,
-			      "\"SecretAccessKey\" : \"wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY\"\n");
+			      "\"SecretAccessKey\" : \"%s\"\n",
+			      default_secret_key);
 		off += ret;
 		ret = sprintf(data + off,
-			      "\"Token\" : \"%s\"\n", s3gw_token);
+			      "\"Token\" : \"%s\"\n",
+			      default_token);
 		off += ret;
 		cur_time += 3600;
 		cur_tm = gmtime(&cur_time);
