@@ -1,15 +1,9 @@
 /*
- *  Copyright 2024-2025 The OpenSSL Project Authors. All Rights Reserved.
- *
- *  Licensed under the Apache License 2.0 (the "License").  You may not use
- *  this file except in compliance with the License.  You can obtain a copy
- *  in the file LICENSE in the source distribution or at
- *  https://www.openssl.org/source/license.html
+ *  Copyright 2025 Hannes Reinecke, SUSE
  */
 
 #include <string.h>
 
-#include <err.h>
 #include <sys/socket.h>
 #include <sys/select.h>
 
@@ -32,6 +26,18 @@ static const char cache_id[] = "Simple S3 Gateway";
 static int parse_xml(http_parser *http, const char *body, size_t len)
 {
 	printf("data: %s\n", body);
+	return 0;
+}
+
+static int parse_header(http_parser *http, const char *at, size_t len)
+{
+	printf("header: %s\n", at);
+	return 0;
+}
+
+static int parse_header_value(http_parser *http, const char *at, size_t len)
+{
+	printf("value: %s\n", at);
 	return 0;
 }
 
@@ -68,6 +74,8 @@ static size_t handle_request(SSL *ssl, http_parser *http)
 
 	memset(&settings, 0, sizeof(settings));
 	settings.on_body = parse_xml;
+	settings.on_header_field = parse_header;
+	settings.on_header_value = parse_header_value;
 
 	while (SSL_read_ex(ssl, buf, sizeof(buf), &nread) > 0) {
 		int ret;
@@ -103,7 +111,7 @@ void tls_setup(struct s3gw_ctx *ctx)
 	ctx->ssl_ctx = SSL_CTX_new(TLS_server_method());
 	if (ctx->ssl_ctx == NULL) {
 		ERR_print_errors_fp(stderr);
-		fprintf(stderr, "Failed to create server SSL_CTX");
+		fprintf(stderr, "Failed to create server SSL_CTX\n");
 		exit(1);
 	}
 
@@ -129,7 +137,7 @@ void tls_setup(struct s3gw_ctx *ctx)
 	if (SSL_CTX_use_certificate_chain_file(ctx->ssl_ctx, ctx->cert) <= 0) {
 		SSL_CTX_free(ctx->ssl_ctx);
 		ERR_print_errors_fp(stderr);
-		fprintf(stderr, "Failed to load the server certificate %s",
+		fprintf(stderr, "Failed to load the server certificate %s\n",
 			ctx->cert);
 		exit(1);
 	}
@@ -139,7 +147,7 @@ void tls_setup(struct s3gw_ctx *ctx)
 		SSL_CTX_free(ctx->ssl_ctx);
 		ERR_print_errors_fp(stderr);
 		fprintf(stderr, "Error loading the server private key %s, "
-			"possible key/cert mismatch???", ctx->key);
+			"possible key/cert mismatch\n", ctx->key);
 		exit(1);
 	}
 
@@ -174,7 +182,7 @@ static void tls_listen(struct s3gw_ctx *ctx)
 	if (ctx->accept_bio == NULL) {
 		SSL_CTX_free(ctx->ssl_ctx);
 		ERR_print_errors_fp(stderr);
-		fprintf(stderr, "Error creating accept bio");
+		fprintf(stderr, "Error creating accept bio\n");
 		exit(1);
 	}
 
@@ -182,7 +190,7 @@ static void tls_listen(struct s3gw_ctx *ctx)
 	if (BIO_do_accept(ctx->accept_bio) <= 0) {
 		SSL_CTX_free(ctx->ssl_ctx);
 		ERR_print_errors_fp(stderr);
-		fprintf(stderr, "Error setting up accept socket");
+		fprintf(stderr, "Error setting up accept socket\n");
 		exit(1);
 	}
 }
@@ -209,7 +217,8 @@ static SSL *tls_accept(struct s3gw_ctx *ctx)
 	/* Associate a new SSL handle with the new connection */
 	if ((ssl = SSL_new(ctx->ssl_ctx)) == NULL) {
 		ERR_print_errors_fp(stderr);
-		fprintf(stderr, "Error creating SSL handle for new connection");
+		fprintf(stderr,
+			"Error creating SSL handle for new connection\n");
 		BIO_free(client_bio);
 		return NULL;
 	}
@@ -219,7 +228,7 @@ static SSL *tls_accept(struct s3gw_ctx *ctx)
 	ret = SSL_accept(ssl);
 	if (ret <= 0) {
 		ERR_print_errors_fp(stderr);
-		fprintf(stderr, "Error performing SSL handshake with client");
+		fprintf(stderr, "Error performing SSL handshake with client\n");
 		SSL_free(ssl);
 		return NULL;
 	}
