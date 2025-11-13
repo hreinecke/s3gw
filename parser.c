@@ -21,15 +21,15 @@ static int parse_header(http_parser *http, const char *at, size_t len)
 	struct s3gw_request *req = http->data;
 	char buf[1024];
 
+	memset(buf, 0, sizeof(buf));
+	strncpy(buf, at, len);
+	printf("header: %s\n", buf);
 	if (!strncmp(at, "Host", len)) {
 		req->next_hdr = req->host;
 	} else if (!strncmp(at, "x-aws-ec2-metadata-token", len)) {
 		req->next_hdr = req->token;
 	} else {
 		req->next_hdr = NULL;
-		memset(buf, 0, sizeof(buf));
-		strncpy(buf, at, len);
-		printf("header: %s\n", buf);
 	}
 	return 0;
 }
@@ -70,6 +70,10 @@ static int parse_url(http_parser *http, const char *at, size_t len)
 		}
 		break;
 	case HTTP_GET:
+		if (!strncmp(at, "/", len)) {
+			req->op = S3_LIST_BUCKETS;
+			break;
+		}
 		if (!strncmp(at, cred_url, strlen(cred_url))) {
 			if (len > strlen(cred_url))
 				req->op = IMDS_GET_ROLE_CREDENTIALS;

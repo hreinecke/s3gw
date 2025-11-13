@@ -8,7 +8,7 @@ s3_client = session.client(
     service_name='s3',
     aws_access_key_id='aaa',
     aws_secret_access_key='bbb',
-    endpoint_url='https://localhost:7878',
+    endpoint_url='http://localhost:7878',
     verify=False,
     )
 

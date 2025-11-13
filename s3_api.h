@@ -15,9 +15,9 @@ enum s3_csum_type {
 
 enum s3_api_ops {
 	API_OPS_UNKNOWN,
+	S3_LIST_BUCKETS,
 	IMDS_GET_METADATA_VERSIONS,
 	IMDS_GET_CREDENTIALS,
-	IMDS_GET_ROLE_CREDENTIALS,
 };
 
 enum s3_csum_algo {

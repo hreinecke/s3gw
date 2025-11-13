@@ -13,19 +13,6 @@
 
 static const char s3gw_token[] = "76a46a30-357b-4362-acfb-4d3d2ac6ee2b";
 
-static const char default_secret_key[] =
-	"wJalrXUtnFEMI/K7MDENG/bPxRfiCYzEXAMPLEKEY";
-
-static const char default_access_key[] =
-	"AKIAIOSFODNN7EXAMPLE";
-
-static const char default_token[] =
-	"AQoDYXdzEPT//////////wEXAMPLEtc764bNrC9SAPBSM22wDOk4x4HIZ8j4FZTwdQW"
-	"LWsKWHGBuFqwAeMicRXmxfpSPfIeoIYRqTflfKD8YUuwthAx7mSEI/qkPpKPi/kMcGd"
-	"QrmGdeehM4IC1NtBmUpp2wUE8phUZampKsburEDy0KPkyQDYwT7WZ0wq5VSXDvp75YU"
-	"9HFvlRd8Tx6q6fE8YQcHNVXAkiY9q6d+xo0rKwT38xVqr7ZD0u0iPPkUL64lIZbqBAz"
-	"+scqKmlzm8FDrypNC9Yjc8fPOLn9FX9KSYvKTr4rvx3iSIlTJabIQwj2ICCR/oLxBA==";
-
 static int bucket_ok(char *buf, const char *loc, const char *arn)
 {
 	enum http_status s = 200;
@@ -57,15 +44,16 @@ static int put_ok(char *buf, const char *data)
 	if (ret < 0)
 		return -errno;
 	off += ret;
-
+#if 0
 	if (data)
 		len = strlen(data);
 	ret = sprintf(buf + off, "Content-Length: %ld\r\n\r\n", len);
 	if (ret < 0)
 		return -errno;
 	off += ret;
+#endif
 	if (data) {
-		ret = sprintf(buf + off, "%s\r\n\r\n", data);
+		ret = sprintf(buf + off, "%s", data);
 		if (ret < 0)
 			return -errno;
 		off += ret;
@@ -73,52 +61,38 @@ static int put_ok(char *buf, const char *data)
 	return off;
 }
 
+static char list_all_buckets[] =
+	"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n"
+	"<ListAllMyBucketsResult>\r\n"
+	"  <Buckets>\r\n"
+	"    <Bucket>\r\r"
+	"      <BucketArn>arn:2e28574b-3276-44a1-8e00-b3de937c07c0</BucketArn>\r\n"
+	"      <BucketRegion>eu-west-2</BucketRegion>\r\n"
+	"      <CreationDate>20251113T102141Z</CreationDate>\r\n"
+	"      <Name>DefaultBucket</Name>\r\n"
+	"    </Bucket>\r\n"
+	"  </Buckets>\r\n"
+	"  <Owner>\r\n"
+	"    <DisplayName>DefaultUser</DisplayName>\r\n"
+	"    <ID>aaa</ID>\r\n"
+	"  </Owner>\r\n"
+	"</ListAllMyBucketsResult>\r\n";
+
 int format_response(struct s3gw_request *req, char *buf)
 {
 	char location[] = "eu-west-1";
 	char bucket[] = "arn:2e28574b-3276-44a1-8e00-b3de937c07c0";
 	int ret;
-	size_t off = 0;
-	char data[4096], tstamp[256];
-	time_t cur_time = time(NULL);
-	struct tm *cur_tm = gmtime(&cur_time);
 
 	switch (req->op) {
+	case S3_LIST_BUCKETS:
+		ret = put_ok(buf, list_all_buckets);
+		break;
 	case IMDS_GET_METADATA_VERSIONS:
 		ret = put_ok(buf, s3gw_token);
 		break;
 	case IMDS_GET_CREDENTIALS:
 		ret = put_ok(buf, "s3gw\r\n");
-		break;
-	case IMDS_GET_ROLE_CREDENTIALS:
-		strftime(tstamp, 256, "%Y-%m-%dT%TZ", cur_tm);
-		ret = sprintf(data,"{\n");
-		off += ret;
-		ret = sprintf(data + off, "\"Code\" : \"Success\"\n");
-		off += ret;
-		ret = sprintf(data + off, "\"LastUpdated\" : \"%s\"\n", tstamp);
-		off += ret;
-		ret = sprintf(data + off, "\"Type\" : \"AWS-HMAC\"\n");
-		off += ret;
-		ret = sprintf(data + off,
-			      "\"AccessKeyId\" : \"%s\"\n",
-			      default_access_key);
-		off += ret;
-		ret = sprintf(data + off,
-			      "\"SecretAccessKey\" : \"%s\"\n",
-			      default_secret_key);
-		off += ret;
-		ret = sprintf(data + off,
-			      "\"Token\" : \"%s\"\n",
-			      default_token);
-		off += ret;
-		cur_time += 3600;
-		cur_tm = gmtime(&cur_time);
-		strftime(tstamp, 256, "%Y-%m-%dT%TZ", cur_tm);
-		ret = sprintf(data + off,
-			      "\"Expiration\" : \"%s\"\n}\n", tstamp);
-		off += ret;
-		ret = put_ok(buf, data);
 		break;
 	default:
 		ret = bucket_ok(buf, location, bucket);

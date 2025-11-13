@@ -51,6 +51,7 @@ static int tcp_listen(struct s3gw_ctx *ctx)
 	hints.ai_protocol = IPPROTO_TCP;
 	hints.ai_flags = AI_NUMERICSERV | AI_PASSIVE;
 
+	printf("looking up '%s' port '%s'\n", host, port);
 	ret = getaddrinfo(host, port, &hints, &ai);
 	if (ret != 0) {
 		fprintf(stderr, "getaddrinfo() on %s:%s failed: %s\n",
@@ -91,7 +92,7 @@ static int tcp_listen(struct s3gw_ctx *ctx)
 		ret = -errno;
 		close(listenfd);
 	} else {
-		printf("listening on %s:%s", host, port);
+		printf("listening on %s:%s\n", host, port);
 		ctx->fd = listenfd;
 		ret = 0;
 	}
@@ -131,15 +132,16 @@ static int tcp_wait_for_connection(struct s3gw_ctx *ctx)
 static int tcp_accept(struct s3gw_ctx *ctx, struct s3gw_request *req)
 {
 	int sockfd;
-	int ret;
+	int ret = 1;
 
 	sockfd = accept(ctx->fd, (struct sockaddr *)NULL, NULL);
 	if (sockfd < 0) {
 		if (errno != EAGAIN)
 			fprintf(stderr, "accept error %d\n", errno);
 		ret = -EAGAIN;
-	} else
+	} else {
 		req->fd = sockfd;
+	}
 	return ret;
 }
 
