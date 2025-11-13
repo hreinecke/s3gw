@@ -6,6 +6,7 @@
 #include <stdbool.h>
 #include <sys/socket.h>
 #include <errno.h>
+#include <unistd.h>
 
 #include <openssl/bio.h>
 #include <openssl/ssl.h>
@@ -49,11 +50,15 @@ static int write_request(struct s3gw_request *req, char *buf, size_t len,
 	if (req->fd) {
 		int ret;
 
+#if 0
 		iov.iov_base = buf;
 		iov.iov_len = len;
 		msg.msg_iov = &iov;
 		msg.msg_iovlen = 1;
 		ret = sendmsg(req->fd, &msg, 0);
+#else
+		ret = write(req->fd, buf, len);
+#endif
 		if (ret < 0)
 			fprintf(stderr, "error %d writing message\n", errno);
 		else {
