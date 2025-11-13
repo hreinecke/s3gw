@@ -22,6 +22,7 @@ int main(int argc, char *argv[])
 	char *default_cert = "server-cert.pem";
 	char *default_key = "server-key.pem";
 	struct s3gw_ctx *ctx = NULL;
+	bool use_tls = false;
 
 	ctx = malloc(sizeof(*ctx));
 	if (!ctx) {
@@ -32,12 +33,25 @@ int main(int argc, char *argv[])
 	ctx->key = default_key;
 
 	if (argc != 2) {
-		fprintf(stderr, "Usage: %s [host:]port\n", argv[0]);
+		fprintf(stderr, "Usage: %s <url>\n", argv[0]);
 		free(ctx);
 		exit(1);
 	}
-	ctx->hostport = argv[1];
+	if (!strncmp(argv[1], "https://", 8)) {
+		ctx->hostport = strdup(argv[1] + 8);
+		use_tls = true;
+	} else if (!strncmp(argv[1], "http://", 7)) {
+		ctx->hostport = strdup(argv[1] + 7);
+		use_tls = false;
+	} else {
+		fprintf(stderr, "invalid url %s\n", argv[1]);
+		free(ctx);
+		exit(1);
+	}
 
-	tls_loop(ctx);
+	if (use_tls)
+		tls_loop(ctx);
+	else
+		tcp_loop(ctx);
 	return 0;
 }
