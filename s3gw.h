@@ -22,5 +22,7 @@ void setup_parser(http_parser_settings *settings);
 size_t handle_request(struct s3gw_request *req);
 int format_response(struct s3gw_request *req, char *buf);
 
+void tls_loop(struct s3gw_ctx *ctx);
+
 #endif /* _S3GW_H */
 

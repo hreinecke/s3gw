@@ -156,27 +156,14 @@ static void tls_close(struct s3gw_request *req)
 	req->ssl = NULL;
 }
 
-int main(int argc, char *argv[])
+static void tls_free(struct s3gw_ctx *ctx)
 {
-	char *default_cert = "server-cert.pem";
-	char *default_key = "server-key.pem";
-	struct s3gw_ctx *ctx = NULL;
+	SSL_CTX_free(ctx->ssl_ctx);
+	free(ctx);
+}
 
-	ctx = malloc(sizeof(*ctx));
-	if (!ctx) {
-		fprintf(stderr, "Out of memory\n");
-		exit(1);
-	}
-	ctx->cert = default_cert;
-	ctx->key = default_key;
-
-	if (argc != 2) {
-		fprintf(stderr, "Usage: %s [host:]port\n", argv[0]);
-		free(ctx);
-		exit(1);
-	}
-	ctx->hostport = argv[1];
-
+void tls_loop(struct s3gw_ctx *ctx)
+{
 	tls_setup(ctx);
 
 	tls_listen(ctx);
@@ -206,10 +193,5 @@ int main(int argc, char *argv[])
 		tls_close(&req);
 	}
 
-	/*
-	 * Unreachable placeholder cleanup code, the above loop runs forever.
-	 */
-	SSL_CTX_free(ctx->ssl_ctx);
-	free(ctx);
-	return 0;
+	tls_free(ctx);
 }
