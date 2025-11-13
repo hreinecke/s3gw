@@ -14,11 +14,31 @@ enum s3_csum_type {
 };
 
 enum s3_api_ops {
-	API_OPS_UNKNOWN,
-	S3_LIST_BUCKETS,
-	S3_LIST_OBJECTS,
-	IMDS_GET_METADATA_VERSIONS,
-	IMDS_GET_CREDENTIALS,
+	S3_OP_Unknown,
+	S3_OP_CreateBucket,
+	S3_OP_HeadBucket,
+	S3_OP_ListBuckets,
+	S3_OP_ListObjects,
+	S3_OP_ListObjectsV2,
+	S3_OP_ListMultipartUploads,
+	S3_OP_DeleteBucket,
+	S3_OP_PutBucketPolicy,
+	S3_OP_GetBucketPolicy,
+	S3_OP_DeleteBucketPolicy,
+	S3_OP_GetBucketPolicyStatus,
+	S3_OP_PutObject,
+	S3_OP_CopyObject,
+	S3_OP_RestoreObject,
+	S3_OP_GetObject,
+	S3_OP_HeadObject,
+	S3_OP_DeleteObject,
+	S3_OP_DeleteObjects,
+	S3_OP_CreateMultipartUpload,
+	S3_OP_CompleteMultipartUpload,
+	S3_OP_AbortMultipartUpload,
+	S3_OP_UploadPart,
+	S3_OP_UploadPartCopy,
+	S3_OP_ListParts,
 };
 
 enum s3_csum_algo {

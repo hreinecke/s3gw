@@ -17,7 +17,16 @@ all_buckets = s3_client.list_buckets(
         BucketRegion='eu-west-2')
 for bucket in all_buckets['Buckets']:
     print(f'{bucket}')
-    all_objects = s3_client.list_objects(
+    head = s3_client.head_bucket(
         Bucket=bucket['Name'])
+    print(f'Bucket: {head}')
+    all_objects = s3_client.list_objects(
+        Bucket=bucket['Name'],
+        MaxKeys=100,
+        Prefix='server')
     for obj in all_objects['Contents']:
         print(f'{obj}')
+        head = s3_client.head_object(
+            Bucket=bucket['Name'],
+            Key=obj['Key'])
+        print(f'Object: {head}')

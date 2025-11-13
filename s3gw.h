@@ -1,6 +1,8 @@
 #ifndef _S3GW_H
 #define _S3GW_H
 
+#define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
+
 struct s3gw_ctx {
 	const char *hostport;
 	const char *cert;

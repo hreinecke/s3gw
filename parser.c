@@ -54,40 +54,100 @@ static int parse_header_value(http_parser *http, const char *at, size_t len)
 	return 0;
 }
 
+struct url_options {
+	enum s3_api_ops op;
+	char *str;
+};
+
+static struct url_options s3_url_options[] = {
+	{ S3_OP_ListObjects, "prefix=" },
+	{ S3_OP_ListObjects, "max-keys=" },
+	{ S3_OP_ListObjects, "marker=" },
+};
+
 static int parse_url(http_parser *http, const char *at, size_t len)
 {
 	struct s3gw_request *req = http->data;
-	char buf[2048], *p;
+	char buf[2048], *opt = NULL, *p;
 	const char *method = http_method_str(http->method);
 
 	memset(buf, 0, sizeof(buf));
 	strncpy(buf, at, len);
+	printf("urn: %s %s\n", method, buf);
 	switch (http->method) {
-	case HTTP_PUT:
-		if (!strncmp(at, "/latest/api/token", len)) {
-			req->op = IMDS_GET_METADATA_VERSIONS;
-		}
-		break;
-	case HTTP_GET:
-		if (!strncmp(at, "/", len)) {
-			req->op = S3_LIST_BUCKETS;
+	case HTTP_HEAD:
+		if (strlen(buf) < 2) {
 			break;
 		}
-		p = strchr(at, '?');
+		p = strchr(buf, '?');
 		if (p) {
 			char *bucket;
 
-			asprintf(&bucket, at + 1, p - at);
+			*p = '\0';
+			bucket = buf + 1;
 			req->bucket = bucket;
-			req->op = S3_LIST_OBJECTS;
+			req->op = S3_OP_HeadObject;
+			p++;
+			opt = p;
+		} else {
+			req->bucket = buf + 1;
+			req->op = S3_OP_HeadBucket;
+		}
+		break;
+	case HTTP_PUT:
+		break;
+	case HTTP_GET:
+		if (!strncmp(buf, "/", len)) {
+			req->op = S3_OP_ListBuckets;
 			break;
+		}
+		p = strchr(buf, '?');
+		if (p) {
+			char *bucket;
+
+			*p = '\0';
+			bucket = buf + 1;
+			req->bucket = bucket;
+			req->op = S3_OP_ListObjects;
+			p++;
+			opt = p;
+			printf("using bucket '%s' (opt '%s')\n",
+			       bucket, opt);
 		}
 		break;
 	default:
 		break;
 	}
-			
-	printf("urn: %s %s\n", method, buf);
+
+	while (opt) {
+		int i;
+		char *val = NULL;
+
+		p = strchr(opt, '&');
+		if (p) {
+			*p = '\0';
+			p++;
+		}
+		val = strchr(opt, '=');
+		if (val)
+			val++;
+		printf("parsing '%s' val '%s' (next '%s')\n",
+		       opt, val, p);
+		for (i = 0; i < ARRAY_SIZE(s3_url_options); i++) {
+			struct url_options *opts;
+
+			opts = &s3_url_options[i];
+			if (opts->op != req->op)
+				continue;
+			if (!strncmp(opt, opts->str,
+				     strlen(opts->str))) {
+				printf("using option '%s' value '%s'\n",
+				       opts->str, val);
+			}
+		}
+		opt = p;
+	}
+
 	return 0;
 }
 

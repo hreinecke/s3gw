@@ -171,7 +171,7 @@ void tcp_loop(struct s3gw_ctx *ctx)
 		}
 
 		memset(&req, 0, sizeof(req));
-		req.op = API_OPS_UNKNOWN;
+		req.op = S3_OP_Unknown;
 		http_parser_init(&req.http, HTTP_REQUEST);
 		req.http.data = &req;
 
