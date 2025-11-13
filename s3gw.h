@@ -18,6 +18,7 @@ struct s3gw_request {
 	char *host;
 	char *token;
 	void *next_hdr;
+	char *bucket;
 };
 
 void setup_parser(http_parser_settings *settings);

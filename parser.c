@@ -57,8 +57,7 @@ static int parse_header_value(http_parser *http, const char *at, size_t len)
 static int parse_url(http_parser *http, const char *at, size_t len)
 {
 	struct s3gw_request *req = http->data;
-	char cred_url[] = "/latest/meta-data/iam/security-credentials/";
-	char buf[2048];
+	char buf[2048], *p;
 	const char *method = http_method_str(http->method);
 
 	memset(buf, 0, sizeof(buf));
@@ -74,11 +73,14 @@ static int parse_url(http_parser *http, const char *at, size_t len)
 			req->op = S3_LIST_BUCKETS;
 			break;
 		}
-		if (!strncmp(at, cred_url, strlen(cred_url))) {
-			if (len > strlen(cred_url))
-				req->op = IMDS_GET_ROLE_CREDENTIALS;
-			else
-				req->op = IMDS_GET_CREDENTIALS;
+		p = strchr(at, '?');
+		if (p) {
+			char *bucket;
+
+			asprintf(&bucket, at + 1, p - at);
+			req->bucket = bucket;
+			req->op = S3_LIST_OBJECTS;
+			break;
 		}
 		break;
 	default:
@@ -89,11 +91,23 @@ static int parse_url(http_parser *http, const char *at, size_t len)
 	return 0;
 }
 
+int parse_header_complete(http_parser *http)
+{
+	struct s3gw_request *req = http->data;
+
+	if (http->method == HTTP_GET) {
+		printf("GET from %s\n", req->host);
+		return 1;
+	}
+	return 0;
+}
+
 void setup_parser(http_parser_settings *settings)
 {
   	memset(settings, 0, sizeof(*settings));
 	settings->on_body = parse_xml;
 	settings->on_header_field = parse_header;
 	settings->on_header_value = parse_header_value;
+	settings->on_headers_complete = parse_header_complete;
 	settings->on_url = parse_url;
 }
