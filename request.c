@@ -16,6 +16,24 @@
 #include "s3_api.h"
 #include "s3gw.h"
 
+void reset_request(struct s3gw_request *req)
+{
+	if (req->bucket) {
+		free(req->bucket);
+		req->bucket = NULL;
+	}
+	if (req->object) {
+		free(req->object);
+		req->object = NULL;
+	}
+	if (req->host) {
+		free(req->host);
+		req->host = NULL;
+	}
+	req->next_hdr = NULL;
+	req->op = S3_OP_Unknown;
+}
+
 static int read_request(struct s3gw_request *req, char *buf, size_t len,
 			size_t *outlen)
 {
@@ -107,5 +125,7 @@ size_t handle_request(struct s3gw_request *req)
 		fprintf(stderr, "Error writing response\n");
 		break;
 	}
+	reset_request(req);
+
 	return total;
 }

@@ -11,9 +11,9 @@
 #include "s3_api.h"
 #include "s3gw.h"
 
-static int bucket_ok(char *buf, const char *loc, const char *arn)
+static int bucket_ok(char *buf, const char *region)
 {
-	enum http_status s = 200;
+	enum http_status s = HTTP_STATUS_OK;
 	size_t off = 0;
 	int ret;
 
@@ -21,11 +21,32 @@ static int bucket_ok(char *buf, const char *loc, const char *arn)
 	if (ret < 0)
 		return -errno;
 	off += ret;
-	ret = sprintf(buf + off, "Location: %s\r\n", loc);
+	ret = sprintf(buf + off, "x-amz-bucket-region: %s\r\n", region);
 	if (ret < 0)
 		return -errno;
 	off += ret;
-	ret = sprintf(buf + off, "x-amz-bucket-arn: %s\r\n", arn);
+	return off;
+}
+
+static char head_object[]=
+	"Last-Modified: 2025-11-13T10:21:41+00:00\r\n"
+	"Content-Length: 1805\r\n"
+	"ETag: \"4b5ce72db65198d0560a7bbb84298133\"\r\n"
+	"Content-Type: application/binary\r\n"
+	"Connection: close\r\n"
+	"Server: s3gw\r\n";
+
+static int object_ok(char *buf)
+{
+	enum http_status s = HTTP_STATUS_OK;
+	size_t off = 0;
+	int ret;
+
+	ret = sprintf(buf, "HTTP/1.1 %d %s\r\n", s, http_status_str(s));
+	if (ret < 0)
+		return -errno;
+	off += ret;
+	ret = sprintf(buf + off, "%s", head_object);
 	if (ret < 0)
 		return -errno;
 	off += ret;
@@ -102,8 +123,14 @@ int format_response(struct s3gw_request *req, char *buf)
 	case S3_OP_ListBuckets:
 		ret = put_status(buf, HTTP_STATUS_OK, list_all_buckets);
 		break;
+	case S3_OP_HeadBucket:
+		ret = bucket_ok(buf, "eu-west-2");
+		break;
 	case S3_OP_ListObjects:
 		ret = put_status(buf, HTTP_STATUS_OK, list_all_objects);
+		break;
+	case S3_OP_HeadObject:
+		ret = object_ok(buf);
 		break;
 	default:
 		ret = put_status(buf, HTTP_STATUS_NOT_FOUND, NULL);

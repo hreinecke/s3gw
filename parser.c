@@ -26,8 +26,6 @@ static int parse_header(http_parser *http, const char *at, size_t len)
 	printf("header: %s\n", buf);
 	if (!strncmp(at, "Host", len)) {
 		req->next_hdr = req->host;
-	} else if (!strncmp(at, "x-aws-ec2-metadata-token", len)) {
-		req->next_hdr = req->token;
 	} else {
 		req->next_hdr = NULL;
 	}
@@ -37,18 +35,15 @@ static int parse_header(http_parser *http, const char *at, size_t len)
 static int parse_header_value(http_parser *http, const char *at, size_t len)
 {
 	struct s3gw_request *req = http->data;
-	char buf[1024];
+	char *buf;
 
+	buf = strdup(at);
+	buf[len] = '\0';
+	printf("value: %s\n", buf);
 	if (req->next_hdr == req->host) {
-		asprintf(&req->host, at);
-		req->host[len] = '\0';
-	} else if (req->next_hdr == req->token) {
-		asprintf(&req->token, at);
-		req->token[len] = '\0';
+		req->host = buf;
 	} else {
-		memset(buf, 0, sizeof(buf));
-		strncpy(buf, at, len);
-		printf("value: %s\n", buf);
+		free(buf);
 	}
 	req->next_hdr = NULL;
 	return 0;
@@ -79,20 +74,21 @@ static int parse_url(http_parser *http, const char *at, size_t len)
 		if (strlen(buf) < 2) {
 			break;
 		}
-		p = strchr(buf, '?');
+		req->bucket = strdup(buf + 1);
+		p = strchr(buf + 1, '/');
 		if (p) {
-			char *bucket;
-
 			*p = '\0';
-			bucket = buf + 1;
-			req->bucket = bucket;
-			req->op = S3_OP_HeadObject;
 			p++;
-			opt = p;
+			req->op = S3_OP_HeadObject;
+			req->object = strdup(p);
+			printf("using object %s/%s\n",
+			       req->bucket, req->object);
 		} else {
-			req->bucket = buf + 1;
 			req->op = S3_OP_HeadBucket;
+			p = strdup(buf + 1);
+			printf("using bucket '%s'\n", req->bucket);
 		}
+		opt = strchr(p, '?');
 		break;
 	case HTTP_PUT:
 		break;
@@ -103,16 +99,13 @@ static int parse_url(http_parser *http, const char *at, size_t len)
 		}
 		p = strchr(buf, '?');
 		if (p) {
-			char *bucket;
-
 			*p = '\0';
-			bucket = buf + 1;
-			req->bucket = bucket;
+			req->bucket = strdup(p + 1);
 			req->op = S3_OP_ListObjects;
 			p++;
 			opt = p;
 			printf("using bucket '%s' (opt '%s')\n",
-			       bucket, opt);
+			       req->bucket, opt);
 		}
 		break;
 	default:

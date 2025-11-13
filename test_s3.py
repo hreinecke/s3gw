@@ -13,7 +13,7 @@ s3_client = session.client(
 all_buckets = s3_client.list_buckets(
         MaxBuckets=100,
         ContinuationToken='cont',
-        Prefix='',
+        Prefix='s3gw',
         BucketRegion='eu-west-2')
 for bucket in all_buckets['Buckets']:
     print(f'{bucket}')
@@ -29,4 +29,4 @@ for bucket in all_buckets['Buckets']:
         head = s3_client.head_object(
             Bucket=bucket['Name'],
             Key=obj['Key'])
-        print(f'Object: {head}')
+        print(f'Object ETag: {head["ETag"]}')

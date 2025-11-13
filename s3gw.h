@@ -18,13 +18,16 @@ struct s3gw_request {
 	http_parser http;
 	enum s3_api_ops op;
 	char *host;
-	char *token;
 	void *next_hdr;
 	char *bucket;
+	char *object;
 };
 
 void setup_parser(http_parser_settings *settings);
+
+void reset_request(struct s3gw_request *req);
 size_t handle_request(struct s3gw_request *req);
+
 int format_response(struct s3gw_request *req, char *buf);
 
 void tls_loop(struct s3gw_ctx *ctx);
