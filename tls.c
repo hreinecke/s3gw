@@ -224,6 +224,18 @@ static int format_response(struct s3gw_request *req, char *buf)
 	return ret;
 }
 
+static int read_request(struct s3gw_request *req, char *buf, size_t len,
+			size_t *outlen)
+{
+	return SSL_read_ex(req->ssl, buf, len, outlen);
+}
+
+static int write_request(struct s3gw_request *req, char *buf, size_t len,
+			 size_t *outlen)
+{
+	return SSL_write_ex(req->ssl, buf, len, outlen);
+}
+
 static size_t handle_request(struct s3gw_request *req, http_parser *http)
 {
 	char buf[8192];
@@ -239,7 +251,7 @@ static size_t handle_request(struct s3gw_request *req, http_parser *http)
 	settings.on_header_value = parse_header_value;
 	settings.on_url = parse_url;
 
-	while (SSL_read_ex(req->ssl, buf, sizeof(buf), &nread) > 0) {
+	while (read_request(req, buf, sizeof(buf), &nread) > 0) {
 		int ret;
 
 		ret = http_parser_execute(http, &settings,
@@ -257,7 +269,7 @@ static size_t handle_request(struct s3gw_request *req, http_parser *http)
 		}
 		printf("Response:\n%s\n", buf);
 		nread = ret;
-		if (SSL_write_ex(req->ssl, buf, nread, &nwritten) > 0 &&
+		if (write_request(req, buf, nread, &nwritten) > 0 &&
 		    nwritten == nread) {
 			total += nwritten;
 			break;
