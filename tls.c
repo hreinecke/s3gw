@@ -25,6 +25,7 @@ struct s3gw_ctx {
 };
 
 struct s3gw_request {
+	SSL *ssl;
 	enum s3_api_ops op;
 	char *host;
 	char *token;
@@ -223,26 +224,22 @@ static int format_response(struct s3gw_request *req, char *buf)
 	return ret;
 }
 
-static size_t handle_request(SSL *ssl, http_parser *http)
+static size_t handle_request(struct s3gw_request *req, http_parser *http)
 {
-	struct s3gw_request req;
 	char buf[8192];
 	http_parser_settings settings;
 	size_t nread;
 	size_t nwritten;
 	size_t total = 0;
 
-	memset(&req, 0, sizeof(req));
-	req.op = API_OPS_UNKNOWN;
-
-	http->data = &req;
+	http->data = req;
 	memset(&settings, 0, sizeof(settings));
 	settings.on_body = parse_xml;
 	settings.on_header_field = parse_header;
 	settings.on_header_value = parse_header_value;
 	settings.on_url = parse_url;
 
-	while (SSL_read_ex(ssl, buf, sizeof(buf), &nread) > 0) {
+	while (SSL_read_ex(req->ssl, buf, sizeof(buf), &nread) > 0) {
 		int ret;
 
 		ret = http_parser_execute(http, &settings,
@@ -253,14 +250,14 @@ static size_t handle_request(SSL *ssl, http_parser *http)
 			break;
 		}
 
-		ret = format_response(&req, buf);
+		ret = format_response(req, buf);
 		if (ret < 0) {
 			fprintf(stderr, "Error formatting response\n");
 			break;
 		}
 		printf("Response:\n%s\n", buf);
 		nread = ret;
-		if (SSL_write_ex(ssl, buf, nread, &nwritten) > 0 &&
+		if (SSL_write_ex(req->ssl, buf, nread, &nwritten) > 0 &&
 		    nwritten == nread) {
 			total += nwritten;
 			break;
@@ -371,10 +368,9 @@ static int tls_wait_for_connection(struct s3gw_ctx *ctx)
 	return BIO_do_accept(ctx->accept_bio);
 }
 
-static SSL *tls_accept(struct s3gw_ctx *ctx)
+static int tls_accept(struct s3gw_ctx *ctx, struct s3gw_request *req)
 {
 	BIO *client_bio;
-	SSL *ssl;
 	int ret;
 
 	/* Pop the client connection from the BIO chain */
@@ -382,24 +378,31 @@ static SSL *tls_accept(struct s3gw_ctx *ctx)
 	fprintf(stderr, "New client connection accepted\n");
 
 	/* Associate a new SSL handle with the new connection */
-	if ((ssl = SSL_new(ctx->ssl_ctx)) == NULL) {
+	if ((req->ssl = SSL_new(ctx->ssl_ctx)) == NULL) {
 		ERR_print_errors_fp(stderr);
 		fprintf(stderr,
 			"Error creating SSL handle for new connection\n");
 		BIO_free(client_bio);
-		return NULL;
+		return -ENOMEM;
 	}
-	SSL_set_bio(ssl, client_bio, client_bio);
+	SSL_set_bio(req->ssl, client_bio, client_bio);
 
 	/* Attempt an SSL handshake with the client */
-	ret = SSL_accept(ssl);
+	ret = SSL_accept(req->ssl);
 	if (ret <= 0) {
 		ERR_print_errors_fp(stderr);
 		fprintf(stderr, "Error performing SSL handshake with client\n");
-		SSL_free(ssl);
-		return NULL;
+		SSL_free(req->ssl);
+		req->ssl = NULL;
 	}
-	return ssl;
+	return ret;
+}
+
+static void tls_close(struct s3gw_request *req)
+{
+	SSL_shutdown(req->ssl);
+	SSL_free(req->ssl);
+	req->ssl = NULL;
 }
 
 int main(int argc, char *argv[])
@@ -438,7 +441,7 @@ int main(int argc, char *argv[])
 
 	/* Wait for incoming connection */
 	for (;;) {
-		SSL *ssl;
+		struct s3gw_request req;
 		size_t total;
 
 		if (tls_wait_for_connection(ctx) <= 0) {
@@ -446,16 +449,18 @@ int main(int argc, char *argv[])
 			continue;
 		}
 
-		ssl = tls_accept(ctx);
-		if (!ssl)
+		memset(&req, 0, sizeof(req));
+		req.op = API_OPS_UNKNOWN;
+
+		if (tls_accept(ctx, &req) <= 0)
 			continue;
 
 		http_parser_init(http, HTTP_REQUEST);
-		total = handle_request(ssl, http);
-		SSL_shutdown(ssl);
+		total = handle_request(&req, http);
+
 		fprintf(stderr, "Client connection closed, %zu bytes sent\n",
 			total);
-		SSL_free(ssl);
+		tls_close(&req);
 	}
 
 	/*
