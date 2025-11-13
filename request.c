@@ -25,16 +25,14 @@ static int write_request(struct s3gw_request *req, char *buf, size_t len,
 	return SSL_write_ex(req->ssl, buf, len, outlen);
 }
 
-size_t handle_request(struct s3gw_request *req, http_parser *http)
+size_t handle_request(struct s3gw_request *req)
 {
 	char buf[8192];
+	http_parser *http = &req->http;
 	http_parser_settings settings;
 	size_t nread;
 	size_t nwritten;
 	size_t total = 0;
-
-	http->data = req;
-	memset(&settings, 0, sizeof(settings));
 
 	setup_parser(&settings);
 

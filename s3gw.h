@@ -11,6 +11,7 @@ struct s3gw_ctx {
 
 struct s3gw_request {
 	SSL *ssl;
+	http_parser http;
 	enum s3_api_ops op;
 	char *host;
 	char *token;
@@ -18,7 +19,7 @@ struct s3gw_request {
 };
 
 void setup_parser(http_parser_settings *settings);
-size_t handle_request(struct s3gw_request *req, http_parser *http);
+size_t handle_request(struct s3gw_request *req);
 int format_response(struct s3gw_request *req, char *buf);
 
 #endif /* _S3GW_H */

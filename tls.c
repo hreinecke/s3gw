@@ -161,7 +161,6 @@ int main(int argc, char *argv[])
 	char *default_cert = "server-cert.pem";
 	char *default_key = "server-key.pem";
 	struct s3gw_ctx *ctx = NULL;
-	http_parser *http;
 
 	ctx = malloc(sizeof(*ctx));
 	if (!ctx) {
@@ -177,14 +176,6 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 	ctx->hostport = argv[1];
-
-	http = malloc(sizeof(*http));
-	if (!http) {
-		fprintf(stderr, "Out of memory\n");
-		free(ctx);
-		exit(1);
-	}
-	memset(http, 0, sizeof(*http));
 
 	tls_setup(ctx);
 
@@ -202,12 +193,13 @@ int main(int argc, char *argv[])
 
 		memset(&req, 0, sizeof(req));
 		req.op = API_OPS_UNKNOWN;
+		http_parser_init(&req.http, HTTP_REQUEST);
+		req.http.data = &req;
 
 		if (tls_accept(ctx, &req) <= 0)
 			continue;
 
-		http_parser_init(http, HTTP_REQUEST);
-		total = handle_request(&req, http);
+		total = handle_request(&req);
 
 		fprintf(stderr, "Client connection closed, %zu bytes sent\n",
 			total);
