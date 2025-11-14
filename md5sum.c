@@ -6,7 +6,6 @@
 unsigned char *md5sum(char *input, int input_len, int *out_len)
 {
 	OSSL_LIB_CTX *ctx;
-	int ret = 0;
 	const char *option_properties = NULL;
 	EVP_MD *md = NULL;
 	EVP_MD_CTX *md_ctx = NULL;

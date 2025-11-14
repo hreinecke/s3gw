@@ -1,6 +1,6 @@
 PRG := s3gw
 OBJS := server.o tls.o tcp.o request.o parser.o format.o \
-	bucket.o object.o md5sum.o http_parser.o
+	dir.o bucket.o object.o md5sum.o http_parser.o
 LIBS := -lssl -lcrypto -luuid
 CFLAGS = -Wall -g
 CERT := server-cert.pem

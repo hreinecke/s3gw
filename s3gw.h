@@ -66,6 +66,11 @@ void init_request(struct s3gw_ctx *ctx, struct s3gw_request *req);
 void reset_request(struct s3gw_request *req);
 size_t handle_request(struct s3gw_request *req);
 
+/* dir.c */
+int find_buckets(struct s3gw_request *req, struct linked_list *head);
+int find_objects(struct s3gw_request *req, struct linked_list *head);
+void clear_object(struct s3gw_object *obj);
+
 /* bucket.c */
 char *list_buckets(struct s3gw_request *req, int *outlen);
 char *check_bucket(struct s3gw_request *req, int *outlen);
