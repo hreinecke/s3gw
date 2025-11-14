@@ -64,6 +64,7 @@ static int parse_url(http_parser *http, const char *at, size_t len)
 {
 	struct s3gw_request *req = http->data;
 	char buf[2048], *opt = NULL, *p;
+	char *bucket, *object = NULL;
 	const char *method = http_method_str(http->method);
 
 	memset(buf, 0, sizeof(buf));
@@ -74,21 +75,31 @@ static int parse_url(http_parser *http, const char *at, size_t len)
 		if (strlen(buf) < 2) {
 			break;
 		}
-		req->bucket = strdup(buf + 1);
-		p = strchr(buf + 1, '/');
+		bucket = buf + 1;
+		p = strchr(bucket, '/');
 		if (p) {
 			*p = '\0';
 			p++;
+			object = p;
+		} else
+			p = bucket;
+
+		opt = strchr(p, '?');
+		if (opt) {
+			*opt = '\0';
+			opt++;
+		}
+		if (object) {
 			req->op = S3_OP_HeadObject;
-			req->object = strdup(p);
+			req->bucket = strdup(bucket);
+			req->object = strdup(object);
 			printf("using object %s/%s\n",
 			       req->bucket, req->object);
 		} else {
 			req->op = S3_OP_HeadBucket;
-			p = strdup(buf + 1);
+			req->bucket = strdup(bucket);
 			printf("using bucket '%s'\n", req->bucket);
 		}
-		opt = strchr(p, '?');
 		break;
 	case HTTP_PUT:
 		break;
@@ -100,7 +111,7 @@ static int parse_url(http_parser *http, const char *at, size_t len)
 		p = strchr(buf, '?');
 		if (p) {
 			*p = '\0';
-			req->bucket = strdup(p + 1);
+			req->bucket = strdup(buf + 1);
 			req->op = S3_OP_ListObjects;
 			p++;
 			opt = p;

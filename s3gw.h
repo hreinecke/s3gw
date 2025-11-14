@@ -28,10 +28,21 @@ struct s3gw_ctx {
 
 struct s3gw_bucket {
 	struct linked_list list;
+	struct linked_list objects;
 	char *name;
 	char *arn;
 	char *region;
 	time_t ctime;
+};
+
+struct s3gw_object {
+	struct linked_list list;
+	struct s3gw_bucket *bucket;
+	char *key;
+	size_t size;
+	unsigned char *etag;
+	size_t etag_len;
+	time_t mtime;
 };
 
 struct s3gw_request {
@@ -45,6 +56,7 @@ struct s3gw_request {
 	char *region;
 	char *bucket;
 	char *object;
+	char *prefix;
 };
 
 void setup_parser(http_parser_settings *settings);
@@ -58,11 +70,18 @@ size_t handle_request(struct s3gw_request *req);
 char *list_buckets(struct s3gw_request *req, int *outlen);
 char *check_bucket(struct s3gw_request *req, int *outlen);
 
+/* object.c */
+char *list_objects(struct s3gw_request *req, int *outlen);
+char *check_object(struct s3gw_request *req, int *outlen);
+
 /* format.c */
 char *format_response(struct s3gw_request *req, int *outlen);
 
 void tls_loop(struct s3gw_ctx *ctx);
 void tcp_loop(struct s3gw_ctx *ctx);
+
+/* md5sum.c */
+unsigned char *md5sum(char *input, int input_len, int *out_len);
 
 #endif /* _S3GW_H */
 

@@ -25,9 +25,10 @@ for bucket in all_buckets['Buckets']:
         MaxKeys=100,
         Prefix='server')
     print(f'{all_objects}')
-    for obj in all_objects['Contents']:
-        print(f'{obj}')
-        head = s3_client.head_object(
-            Bucket=bucket['Name'],
-            Key=obj['Key'])
-        print(f'Object ETag: {head["ETag"]}')
+    if 'Contents' in all_objects:
+        for obj in all_objects['Contents']:
+            print(f'{obj}')
+            head = s3_client.head_object(
+                Bucket=bucket['Name'],
+                Key=obj['Key'])
+            print(f'Object ETag: {head["ETag"]}')
