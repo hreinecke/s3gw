@@ -10,7 +10,7 @@
 #include "s3_api.h"
 #include "s3gw.h"
 
-static int check_bucket(char *dirname, char *name, struct linked_list *head)
+static int find_bucket(char *dirname, char *name, struct linked_list *head)
 {
 	struct s3gw_bucket *b;
 	char *pathname;
@@ -58,7 +58,7 @@ static int find_buckets(struct s3gw_request *req, struct linked_list *head)
 	if (!sd) {
 		fprintf(stderr, "Cannot open %s\n", dirname);
 		free(dirname);
-		return 0;
+		return -EPERM;
 	}
 	while ((se = readdir(sd))) {
 		if (!strcmp(se->d_name, ".") ||
@@ -67,7 +67,7 @@ static int find_buckets(struct s3gw_request *req, struct linked_list *head)
 		printf("checking %s type %d\n",
 		       se->d_name, se->d_type);
 		if (se->d_type == DT_DIR) {
-			ret = check_bucket(dirname, se->d_name, head);
+			ret = find_bucket(dirname, se->d_name, head);
 			if (ret < 0)
 				break;
 			num++;
@@ -118,7 +118,7 @@ char *list_buckets(struct s3gw_request *req, int *outlen)
 
 	INIT_LINKED_LIST(&top);
 	ret = find_buckets(req, &top);
-	if (ret < 0) {
+	if (ret < 0 && ret != -EPERM) {
 		s = HTTP_STATUS_NOT_FOUND;
 		goto out_error;
 	}
@@ -175,5 +175,40 @@ out_error:
 	ret = sprintf(buf, "HTTP/1.1 %d %s\r\n",
 		      s, http_status_str(s));
 	*outlen = strlen(buf);
+	return buf;
+}
+
+char *check_bucket(struct s3gw_request *req, int *outlen)
+{
+	struct linked_list top;
+	enum http_status s = HTTP_STATUS_OK;
+	char *buf;
+	int ret;
+
+	INIT_LINKED_LIST(&top);
+	ret = find_buckets(req, &top);
+	if (ret < 0) {
+		if (ret == -EPERM)
+			s = HTTP_STATUS_FORBIDDEN;
+		else
+			s = HTTP_STATUS_NOT_FOUND;
+		goto out_error;
+	}
+	ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n"
+		       "x-amz-bucket-region: %s\r\n",
+		       s, http_status_str(s), req->ctx->region);
+	if (ret < 0)
+		buf = NULL;
+	else
+		*outlen = ret;
+	return buf;
+
+out_error:
+	ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n",
+		       s, http_status_str(s));
+	if (ret > 0)
+		*outlen = ret;
+	else
+		buf = NULL;
 	return buf;
 }

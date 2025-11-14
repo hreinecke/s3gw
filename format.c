@@ -11,22 +11,6 @@
 #include "s3_api.h"
 #include "s3gw.h"
 
-static char *bucket_ok(const char *region, int *outlen)
-{
-	enum http_status s = HTTP_STATUS_OK;
-	char *buf;
-	int ret;
-
-	ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n"
-		       "x-amz-bucket-region: %s\r\n",
-		       s, http_status_str(s), region);
-	if (ret < 0) {
-		*outlen = -errno;
-		return NULL;
-	}
-	return buf;
-}
-
 static char head_object[]=
 	"Last-Modified: 2025-11-13T10:21:41+00:00\r\n"
 	"Content-Length: 1805\r\n"
@@ -102,7 +86,7 @@ char *format_response(struct s3gw_request *req, int *outlen)
 		buf = list_buckets(req, outlen);
 		break;
 	case S3_OP_HeadBucket:
-		buf = bucket_ok(req->region, outlen);
+		buf = check_bucket(req, outlen);
 		break;
 	case S3_OP_ListObjects:
 		buf = put_status(HTTP_STATUS_OK, list_all_objects, outlen);

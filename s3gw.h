@@ -56,6 +56,7 @@ size_t handle_request(struct s3gw_request *req);
 
 /* bucket.c */
 char *list_buckets(struct s3gw_request *req, int *outlen);
+char *check_bucket(struct s3gw_request *req, int *outlen);
 
 /* format.c */
 char *format_response(struct s3gw_request *req, int *outlen);
