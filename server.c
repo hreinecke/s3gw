@@ -17,6 +17,10 @@
 #include "s3_api.h"
 #include "s3gw.h"
 
+static char default_region[] = "eu-west-2";
+static char default_base_dir[] = "/tmp/s3";
+static char default_owner[] = "AIDACKEVSQ6C2EXAMPLE";
+
 int main(int argc, char *argv[])
 {
 	char *default_cert = "server-cert.pem";
@@ -31,6 +35,9 @@ int main(int argc, char *argv[])
 	}
 	ctx->cert = default_cert;
 	ctx->key = default_key;
+	ctx->region = default_region;
+	ctx->owner = default_owner;
+	ctx->base_dir = default_base_dir;
 
 	if (argc != 2) {
 		fprintf(stderr, "Usage: %s <url>\n", argv[0]);

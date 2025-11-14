@@ -1,5 +1,5 @@
 PRG := s3gw
-OBJS := server.o tls.o tcp.c request.o parser.o format.o http_parser.o
+OBJS := server.o tls.o tcp.o request.o parser.o format.o bucket.o http_parser.o
 LIBS := -lssl -lcrypto -luuid
 CFLAGS = -Wall -g
 CERT := server-cert.pem
@@ -22,3 +22,4 @@ tcp.o: tcp.c s3gw.h
 request.o: request.c s3gw.h
 parser.o: parser.c s3gw.h s3_api.h http_parser.h
 format.o: format.c s3gw.h s3_api.h
+bucket.o: bucket.c s3gw.h s3_api.h utils.h

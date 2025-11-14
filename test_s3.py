@@ -11,7 +11,7 @@ s3_client = session.client(
     endpoint_url='http://localhost:7878')
 
 all_buckets = s3_client.list_buckets(
-        MaxBuckets=100,
+        MaxBuckets=64,
         ContinuationToken='cont',
         Prefix='s3gw',
         BucketRegion='eu-west-2')
@@ -20,10 +20,11 @@ for bucket in all_buckets['Buckets']:
     head = s3_client.head_bucket(
         Bucket=bucket['Name'])
     print(f'Bucket: {head}')
-    all_objects = s3_client.list_objects(
+    all_objects = s3_client.list_objects_v2(
         Bucket=bucket['Name'],
         MaxKeys=100,
         Prefix='server')
+    print(f'{all_objects}')
     for obj in all_objects['Contents']:
         print(f'{obj}')
         head = s3_client.head_object(

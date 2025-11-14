@@ -72,21 +72,6 @@ static char *put_status(enum http_status s, const char *data, int *outlen)
 	return buf;
 }
 
-static char list_all_buckets[] =
-	"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n"
-	"<ListAllMyBucketsResult>\r\n"
-	"  <Buckets>\r\n"
-	"    <Bucket>\r\n"
-	"      <CreationDate>2025-11-13T10:21:41+00:00</CreationDate>\r\n"
-	"      <Name>s3gw-demo-bucket</Name>\r\n"
-	"    </Bucket>\r\n"
-	"  </Buckets>\r\n"
-	"  <Owner>\r\n"
-	"    <DisplayName>Account+Name</DisplayName>\r\n"
-	"    <ID>AIDACKEVSQ6C2EXAMPLE</ID>\r\n"
-	"  </Owner>\r\n"
-	"</ListAllMyBucketsResult>\r\n";
-
 static char list_all_objects[] =
 	"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n"
 	"<ListBucketResult>\r\n"
@@ -114,10 +99,10 @@ char *format_response(struct s3gw_request *req, int *outlen)
 
 	switch (req->op) {
 	case S3_OP_ListBuckets:
-		buf = put_status(HTTP_STATUS_OK, list_all_buckets, outlen);
+		buf = list_buckets(req, outlen);
 		break;
 	case S3_OP_HeadBucket:
-		buf = bucket_ok("eu-west-2", outlen);
+		buf = bucket_ok(req->region, outlen);
 		break;
 	case S3_OP_ListObjects:
 		buf = put_status(HTTP_STATUS_OK, list_all_objects, outlen);

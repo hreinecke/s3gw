@@ -8,13 +8,18 @@
 #include <errno.h>
 #include <unistd.h>
 
-#include <openssl/bio.h>
-#include <openssl/ssl.h>
-
-#include "http_parser.h"
-
 #include "s3_api.h"
 #include "s3gw.h"
+
+void init_request(struct s3gw_ctx *ctx, struct s3gw_request *req)
+{
+	memset(req, 0, sizeof(*req));
+	req->op = S3_OP_Unknown;
+	req->region = strdup(ctx->region);
+	http_parser_init(&req->http, HTTP_REQUEST);
+	req->http.data = req;
+	req->ctx = ctx;
+}
 
 void reset_request(struct s3gw_request *req)
 {
@@ -29,6 +34,10 @@ void reset_request(struct s3gw_request *req)
 	if (req->host) {
 		free(req->host);
 		req->host = NULL;
+	}
+	if (req->region) {
+		free(req->region);
+		req->region = NULL;
 	}
 	req->next_hdr = NULL;
 	req->op = S3_OP_Unknown;

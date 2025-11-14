@@ -170,10 +170,7 @@ void tcp_loop(struct s3gw_ctx *ctx)
 			continue;
 		}
 
-		memset(&req, 0, sizeof(req));
-		req.op = S3_OP_Unknown;
-		http_parser_init(&req.http, HTTP_REQUEST);
-		req.http.data = &req;
+		init_request(ctx, &req);
 
 		if (tcp_accept(ctx, &req) <= 0)
 			continue;
@@ -183,6 +180,7 @@ void tcp_loop(struct s3gw_ctx *ctx)
 		fprintf(stderr, "Client connection closed, %zu bytes sent\n",
 			total);
 		tcp_close(&req);
+		reset_request(&req);
 	}
 
 	tcp_free(ctx);
