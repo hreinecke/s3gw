@@ -62,8 +62,10 @@ static int read_request(struct s3gw_request *req, char *buf, size_t len,
 static int write_request(struct s3gw_request *req, char *buf, size_t len,
 			 size_t *outlen)
 {
+#if 0
 	struct msghdr msg;
 	struct iovec iov;
+#endif
 
 	if (req->fd) {
 		int ret;
