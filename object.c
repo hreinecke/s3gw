@@ -10,8 +10,6 @@
 #include <sys/stat.h>
 #include <sys/mman.h>
 
-#include <openssl/evp.h>
-
 #include "s3_api.h"
 #include "s3gw.h"
 
