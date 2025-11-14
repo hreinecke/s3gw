@@ -91,8 +91,14 @@ size_t handle_request(struct s3gw_request *req)
 	setup_parser(&settings);
 
 	ret = read_request(req, buf, sizeof(buf), &nread);
-	if (ret <= 0) {
+	if (ret < 0) {
 		fprintf(stderr, "Error %d reading request\n", errno);
+		return 0;
+	}
+	if (ret == 0) {
+		fprintf(stderr,
+			"Connection closed after reading %ld bytes\n",
+			nread);
 		return 0;
 	}
 
@@ -115,8 +121,14 @@ size_t handle_request(struct s3gw_request *req)
 	while (total < resp_len) {
 		ret = write_request(req, resp + total, resp_len - total,
 				    &nwritten);
-		if (ret <= 0) {
-			fprintf(stderr, "Error writing response\n");
+		if (ret < 0) {
+			fprintf(stderr, "Error %d writing response\n", errno);
+			break;
+		}
+		if (ret == 0) {
+			fprintf(stderr,
+				"Connection closed after writing %ld bytes\n",
+				total);
 			break;
 		}
 		total += nwritten;
