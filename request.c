@@ -49,12 +49,8 @@ static int read_request(struct s3gw_request *req, char *buf, size_t len,
 		msg.msg_iov = &iov;
 		msg.msg_iovlen = 1;
 		ret = recvmsg(req->fd, &msg, 0);
-		if (ret < 0)
-			fprintf(stderr, "error %d reading message\n", errno);
-		else {
+		if (ret > 0)
 			*outlen = ret;
-			printf("read %d bytes\n", ret);
-		}
 		return ret;
 	}
 	return SSL_read_ex(req->ssl, buf, len, outlen);
@@ -75,12 +71,8 @@ static int write_request(struct s3gw_request *req, char *buf, size_t len,
 		msg.msg_iov = &iov;
 		msg.msg_iovlen = 1;
 		ret = sendmsg(req->fd, &msg, 0);
-		if (ret < 0)
-			fprintf(stderr, "error %d writing message\n", errno);
-		else {
+		if (ret > 0)
 			*outlen = ret;
-			printf("wrote %d bytes\n", ret);
-		}
 		return ret;
 	}
 	return SSL_write_ex(req->ssl, buf, len, outlen);
