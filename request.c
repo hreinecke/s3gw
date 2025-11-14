@@ -92,42 +92,48 @@ static int write_request(struct s3gw_request *req, char *buf, size_t len,
 
 size_t handle_request(struct s3gw_request *req)
 {
-	char buf[8192];
+	char *resp, buf[8192];
 	http_parser *http = &req->http;
 	http_parser_settings settings;
 	size_t nread;
-	size_t nwritten;
+	size_t nwritten = 0;
 	size_t total = 0;
+	int ret, resp_len;
 
 	setup_parser(&settings);
 
-	while (read_request(req, buf, sizeof(buf), &nread) > 0) {
-		int ret;
-
-		ret = http_parser_execute(http, &settings,
-					  (const char *)buf, nread);
-		if (ret == 0 || http->http_errno) {
-			fprintf(stderr, "failed to parse HTTP, errno %d\n",
-				http->http_errno);
-			break;
-		}
-
-		ret = format_response(req, buf);
-		if (ret < 0) {
-			fprintf(stderr, "Error formatting response\n");
-			break;
-		}
-		printf("Response (len %d):\n%s\n", ret, buf);
-		nread = ret;
-		if (write_request(req, buf, nread, &nwritten) > 0 &&
-		    nwritten == nread) {
-			total += nwritten;
-			break;
-		}
-		fprintf(stderr, "Error writing response\n");
-		break;
+	ret = read_request(req, buf, sizeof(buf), &nread);
+	if (ret <= 0) {
+		fprintf(stderr, "Error %d reading request\n", errno);
+		return 0;
 	}
-	reset_request(req);
+
+	ret = http_parser_execute(http, &settings,
+				  (const char *)buf, nread);
+	if (ret == 0 || http->http_errno) {
+		fprintf(stderr, "failed to parse HTTP, errno %d\n",
+			http->http_errno);
+		return 0;
+	}
+	if (ret < nread)
+		printf("%ld trailing bytes on input\n", nread - ret);
+
+	resp = format_response(req, &resp_len);
+	if (!resp) {
+		fprintf(stderr, "Error formatting response\n");
+		return 0;
+	}
+	printf("Response (len %d):\n%s\n", resp_len, resp);
+	while (total < resp_len) {
+		ret = write_request(req, resp + total, resp_len - total,
+				    &nwritten);
+		if (ret <= 0) {
+			fprintf(stderr, "Error writing response\n");
+			break;
+		}
+		total += nwritten;
+	}
+	free(resp);
 
 	return total;
 }

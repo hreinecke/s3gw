@@ -12,6 +12,13 @@ struct s3gw_ctx {
 	BIO *accept_bio;
 };
 
+struct s3gw_bucket {
+	char *name;
+	char *arn;
+	char *region;
+	time_t cdate;
+};
+
 struct s3gw_request {
 	int fd;
 	SSL *ssl;
@@ -28,7 +35,7 @@ void setup_parser(http_parser_settings *settings);
 void reset_request(struct s3gw_request *req);
 size_t handle_request(struct s3gw_request *req);
 
-int format_response(struct s3gw_request *req, char *buf);
+char *format_response(struct s3gw_request *req, int *outlen);
 
 void tls_loop(struct s3gw_ctx *ctx);
 void tcp_loop(struct s3gw_ctx *ctx);

@@ -13,7 +13,12 @@ clean:
 $(PRG): $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
 
-tls.o: tls.c http_parser.h
-
 $(CERT):
 	openssl req -x509 -newkey rsa:4096 -keyout $(KEY) -out $(CERT) -sha256 -days 365 -nodes -subj "/CN=localhost"
+
+server.o: server.c s3gw.h
+tls.o: tls.c s3gw.h
+tcp.o: tcp.c s3gw.h
+request.o: request.c s3gw.h
+parser.o: parser.c s3gw.h s3_api.h http_parser.h
+format.o: format.c s3gw.h s3_api.h

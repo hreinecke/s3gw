@@ -11,21 +11,20 @@
 #include "s3_api.h"
 #include "s3gw.h"
 
-static int bucket_ok(char *buf, const char *region)
+static char *bucket_ok(const char *region, int *outlen)
 {
 	enum http_status s = HTTP_STATUS_OK;
-	size_t off = 0;
+	char *buf;
 	int ret;
 
-	ret = sprintf(buf, "HTTP/1.1 %d %s\r\n", s, http_status_str(s));
-	if (ret < 0)
-		return -errno;
-	off += ret;
-	ret = sprintf(buf + off, "x-amz-bucket-region: %s\r\n", region);
-	if (ret < 0)
-		return -errno;
-	off += ret;
-	return off;
+	ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n"
+		       "x-amz-bucket-region: %s\r\n",
+		       s, http_status_str(s), region);
+	if (ret < 0) {
+		*outlen = -errno;
+		return NULL;
+	}
+	return buf;
 }
 
 static char head_object[]=
@@ -36,47 +35,41 @@ static char head_object[]=
 	"Connection: close\r\n"
 	"Server: s3gw\r\n";
 
-static int object_ok(char *buf)
+static char *object_ok(int *outlen)
 {
 	enum http_status s = HTTP_STATUS_OK;
-	size_t off = 0;
+	char *buf;
 	int ret;
 
-	ret = sprintf(buf, "HTTP/1.1 %d %s\r\n", s, http_status_str(s));
-	if (ret < 0)
-		return -errno;
-	off += ret;
-	ret = sprintf(buf + off, "%s", head_object);
-	if (ret < 0)
-		return -errno;
-	off += ret;
-	return off;
+	ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n%s",
+		       s, http_status_str(s), head_object);
+	if (ret < 0) {
+		*outlen = -errno;
+		return NULL;
+	}
+	*outlen = ret;
+	return buf;
 }
 
-static int put_status(char *buf, enum http_status s, const char *data)
+static char *put_status(enum http_status s, const char *data, int *outlen)
 {
-	size_t off = 0, len = 0;
+	char *buf;
 	int ret;
 
-	ret = sprintf(buf, "HTTP/1.1 %d %s\r\n", s, http_status_str(s));
-	if (ret < 0)
-		return -errno;
-	off += ret;
-	if (!data)
-		return off;
-
-	len = strlen(data);
-	ret = sprintf(buf + off, "Content-Length: %ld\r\n\r\n", len);
-	if (ret < 0)
-		return -errno;
-	off += ret;
-	if (data) {
-		ret = sprintf(buf + off, "%s", data);
-		if (ret < 0)
-			return -errno;
-		off += ret;
+	if (!data) {
+		ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n", s,
+			       http_status_str(s));
+	} else {
+		ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n"
+			       "Content-Length: %ld\r\n\r\n%s",
+			       s, http_status_str(s), strlen(data),
+			       data);
 	}
-	return off;
+	if (ret > 0)
+		*outlen = ret;
+	else
+		buf = NULL;
+	return buf;
 }
 
 static char list_all_buckets[] =
@@ -115,26 +108,26 @@ static char list_all_objects[] =
 	"  </Contents>\r\n"
 	"</ListBucketResult>\r\n";
 
-int format_response(struct s3gw_request *req, char *buf)
+char *format_response(struct s3gw_request *req, int *outlen)
 {
-	int ret;
+	char *buf;
 
 	switch (req->op) {
 	case S3_OP_ListBuckets:
-		ret = put_status(buf, HTTP_STATUS_OK, list_all_buckets);
+		buf = put_status(HTTP_STATUS_OK, list_all_buckets, outlen);
 		break;
 	case S3_OP_HeadBucket:
-		ret = bucket_ok(buf, "eu-west-2");
+		buf = bucket_ok("eu-west-2", outlen);
 		break;
 	case S3_OP_ListObjects:
-		ret = put_status(buf, HTTP_STATUS_OK, list_all_objects);
+		buf = put_status(HTTP_STATUS_OK, list_all_objects, outlen);
 		break;
 	case S3_OP_HeadObject:
-		ret = object_ok(buf);
+		buf = object_ok(outlen);
 		break;
 	default:
-		ret = put_status(buf, HTTP_STATUS_NOT_FOUND, NULL);
+		buf = put_status(HTTP_STATUS_NOT_FOUND, NULL, outlen);
 		break;
 	}
-	return ret;
+	return buf;
 }
