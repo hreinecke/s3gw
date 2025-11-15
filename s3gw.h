@@ -67,6 +67,8 @@ void reset_request(struct s3gw_request *req);
 size_t handle_request(struct s3gw_request *req);
 
 /* dir.c */
+int create_owner(struct s3gw_ctx *ctx, char *owner_id,
+		 char *key, char *secret);
 int find_buckets(struct s3gw_request *req, struct linked_list *head);
 int find_objects(struct s3gw_request *req, struct linked_list *head);
 void clear_object(struct s3gw_object *obj);
