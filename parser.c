@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <string.h>
+#include <errno.h>
 
 #include <openssl/bio.h>
 #include <openssl/ssl.h>
@@ -19,32 +20,36 @@ static int parse_xml(http_parser *http, const char *body, size_t len)
 static int parse_header(http_parser *http, const char *at, size_t len)
 {
 	struct s3gw_request *req = http->data;
-	char buf[1024];
+	struct s3gw_header *hdr;
 
-	memset(buf, 0, sizeof(buf));
-	strncpy(buf, at, len);
-	printf("header: %s\n", buf);
-	if (!strncmp(at, "Host", len)) {
-		req->next_hdr = req->host;
-	} else {
-		req->next_hdr = NULL;
+	hdr = malloc(sizeof(*hdr));
+	if (!hdr)
+		return -ENOMEM;
+	hdr->key = malloc(len + 1);
+	if (!hdr->key) {
+		free(hdr);
+		return -ENOMEM;
 	}
+	memset(hdr->key, 0, len + 1);
+	strncpy(hdr->key, at, len);
+	printf("header: %s\n", hdr->key);
+	list_add(&hdr->list, &req->hdr_list);
+	req->next_hdr = hdr;
 	return 0;
 }
 
 static int parse_header_value(http_parser *http, const char *at, size_t len)
 {
 	struct s3gw_request *req = http->data;
-	char *buf;
+	struct s3gw_header *hdr = req->next_hdr;
 
-	buf = strdup(at);
-	buf[len] = '\0';
-	printf("value: %s\n", buf);
-	if (req->next_hdr == req->host) {
-		req->host = buf;
-	} else {
-		free(buf);
-	}
+	if (!req->next_hdr)
+		return -EINVAL;
+	hdr->value = malloc(len + 1);
+	if (!hdr->value)
+		return -ENOMEM;
+	memset(hdr->value, 0, len + 1);
+	strncpy(hdr->value, at, len);
 	req->next_hdr = NULL;
 	return 0;
 }
@@ -158,9 +163,17 @@ static int parse_url(http_parser *http, const char *at, size_t len)
 int parse_header_complete(http_parser *http)
 {
 	struct s3gw_request *req = http->data;
+	struct s3gw_header *hdr;
+	char *host;
 
+	list_for_each_entry(hdr, &req->hdr_list, list) {
+		if (!strcmp(hdr->key, "Host")) {
+			host = hdr->value;
+			break;
+		}
+	}
 	if (http->method == HTTP_GET) {
-		printf("GET from %s\n", req->host);
+		printf("GET from %s\n", host);
 		return 1;
 	}
 	return 0;

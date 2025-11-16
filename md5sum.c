@@ -2,6 +2,7 @@
 
 #include <openssl/err.h>
 #include <openssl/evp.h>
+#include <openssl/hmac.h>
 
 unsigned char *md5sum(char *input, int input_len, int *out_len)
 {
@@ -63,4 +64,10 @@ err_free:
 	free(output);
 	output = NULL;
 	goto cleanup;
+}
+
+unsigned char *hmac_sha256(const void *key, int keylen,
+			   const unsigned char *data, int datalen,
+			   unsigned char *result, unsigned int *resultlen) {
+	return HMAC(EVP_sha256(), key, keylen, data, datalen, result, resultlen);
 }

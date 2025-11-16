@@ -14,6 +14,7 @@
 void init_request(struct s3gw_ctx *ctx, struct s3gw_request *req)
 {
 	memset(req, 0, sizeof(*req));
+	INIT_LINKED_LIST(&req->hdr_list);
 	req->op = S3_OP_Unknown;
 	req->region = strdup(ctx->region);
 	http_parser_init(&req->http, HTTP_REQUEST);
@@ -23,6 +24,8 @@ void init_request(struct s3gw_ctx *ctx, struct s3gw_request *req)
 
 void reset_request(struct s3gw_request *req)
 {
+	struct s3gw_header *hdr, *tmp;
+
 	if (req->bucket) {
 		free(req->bucket);
 		req->bucket = NULL;
@@ -31,9 +34,12 @@ void reset_request(struct s3gw_request *req)
 		free(req->object);
 		req->object = NULL;
 	}
-	if (req->host) {
-		free(req->host);
-		req->host = NULL;
+	list_for_each_entry_safe(hdr, tmp, &req->hdr_list, list) {
+		list_del_init(&hdr->list);
+		if (hdr->value)
+			free(hdr->value);
+		free(hdr->key);
+		free(hdr);
 	}
 	if (req->region) {
 		free(req->region);

@@ -45,13 +45,19 @@ struct s3gw_object {
 	time_t mtime;
 };
 
+struct s3gw_header {
+	struct linked_list list;
+	char *key;
+	char *value;
+};
+
 struct s3gw_request {
 	struct s3gw_ctx *ctx;
 	int fd;
 	SSL *ssl;
 	http_parser http;
 	enum s3_api_ops op;
-	char *host;
+	struct linked_list hdr_list;
 	void *next_hdr;
 	char *region;
 	char *bucket;
