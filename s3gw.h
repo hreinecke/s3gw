@@ -20,6 +20,7 @@ struct s3gw_ctx {
 	const char *key;
 	const char *base_dir;
 	const char *owner;
+	const char *secret;
 	const char *region;
 	int fd;
 	SSL_CTX *ssl_ctx;
@@ -76,8 +77,8 @@ void reset_request(struct s3gw_request *req);
 size_t handle_request(struct s3gw_request *req);
 
 /* dir.c */
-int create_owner(struct s3gw_ctx *ctx, char *owner_id,
-		 char *key, char *secret);
+int create_owner_secret(struct s3gw_ctx *ctx, char *owner_id, char *secret);
+char *get_owner_secret(struct s3gw_ctx *ctx, char *owner_id, int *out_len);
 int find_buckets(struct s3gw_request *req, struct linked_list *head);
 int find_objects(struct s3gw_request *req, struct linked_list *head);
 void clear_object(struct s3gw_object *obj);
@@ -96,8 +97,15 @@ char *format_response(struct s3gw_request *req, int *outlen);
 void tls_loop(struct s3gw_ctx *ctx);
 void tcp_loop(struct s3gw_ctx *ctx);
 
-/* md5sum.c */
+/* auth.c */
+char *bin2hex(unsigned char *input, int input_len, size_t *out_len);
+unsigned char *hmac_sha256(const void *key, int keylen,
+			   const unsigned char *data, int datalen,
+			   unsigned char *result, unsigned int *resultlen);
 unsigned char *md5sum(char *input, int input_len, int *out_len);
+char *auth_string_to_sign(struct s3gw_request *req, int *out_len);
+char *auth_sign_str(struct s3gw_request *req, char *str_to_sign, int *out_len);
+int check_authorization(struct s3gw_request *req);
 
 #endif /* _S3GW_H */
 

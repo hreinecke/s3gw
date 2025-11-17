@@ -19,7 +19,7 @@
 
 static char default_region[] = "eu-west-2";
 static char default_base_dir[] = "/home/kvm/s3";
-static char default_owner[] = "AIDACKEVSQ6C2EXAMPLE";
+static char default_owner[] = "aaa";
 
 int main(int argc, char *argv[])
 {
@@ -40,7 +40,7 @@ int main(int argc, char *argv[])
 	ctx->owner = default_owner;
 	ctx->base_dir = default_base_dir;
 
-	ret = create_owner(ctx, default_owner, "aaa", "bbb");
+	ret = create_owner_secret(ctx, default_owner, "bbb");
 	if (ret < 0) {
 		fprintf(stderr, "failed to create owner, error %d\n", ret);
 		free(ctx);

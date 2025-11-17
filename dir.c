@@ -14,11 +14,9 @@
 #include "s3_api.h"
 #include "s3gw.h"
 
-int create_owner(struct s3gw_ctx *ctx, char *owner_id,
-		 char *key, char *secret)
+int create_owner_secret(struct s3gw_ctx *ctx, char *owner_id, char *secret)
 {
-	int set_access_key = 1, set_secret_key = 1;
-	const char akey[] = "user.access_key_id";
+	int set_secret_key = 1;
 	const char skey[] = "user.secret_access_key";
 	struct stat st;
 	char *pathname;
@@ -30,25 +28,14 @@ int create_owner(struct s3gw_ctx *ctx, char *owner_id,
 		       ctx->base_dir, owner_id);
 	if (ret < 0)
 		return -ENOMEM;
-	if (!key || !secret)
+	if (!secret)
 		return -EINVAL;
 
 	ret = stat(pathname, &st);
 	if (!ret) {
-		value_size = strlen(key);
-		ret = getxattr(pathname, akey, value, value_size);
-		if (ret > 0) {
-			if (strncmp(key, value, value_size)) {
-				printf("access key mismatch for %s\n",
-				       owner_id);
-				set_access_key = 2;
-			} else
-				set_access_key = 0;
-		}
-		value_size = strlen(secret);
 		ret = getxattr(pathname, skey, value, value_size);
 		if (ret > 0) {
-			value_size = strlen(secret);
+			value_size = ret;
 			if (strncmp(secret, value, value_size)) {
 				printf("secret key mismatch for %s\n",
 					owner_id);
@@ -61,19 +48,6 @@ int create_owner(struct s3gw_ctx *ctx, char *owner_id,
 		if (ret < 0) {
 			fprintf(stderr, "failed to create directoy %s\n",
 				pathname);
-			return -errno;
-		}
-	}
-	if (set_access_key) {
-		const char *op = set_access_key > 1 ? "update" : "set";
-		int flags = set_access_key > 1 ?
-			XATTR_REPLACE : XATTR_CREATE;
-
-		printf("%s access key for %s\n", op, owner_id);
-		ret = setxattr(pathname, akey, key, strlen(key), flags);
-		if (ret < 0) {
-			fprintf(stderr, "failed to %s access key for %s, error %d\n",
-				op, owner_id, errno);
 			return -errno;
 		}
 	}
@@ -91,6 +65,36 @@ int create_owner(struct s3gw_ctx *ctx, char *owner_id,
 		}
 	}
 	return 0;
+}
+
+char *get_owner_secret(struct s3gw_ctx *ctx, char *owner_id, int *out_len)
+{
+	const char skey[] = "user.secret_access_key";
+	char *pathname, *value;
+	size_t value_size = 128;
+	int ret;
+
+	ret = asprintf(&pathname, "%s/%s",
+		       ctx->base_dir, owner_id);
+	if (ret < 0)
+		return NULL;
+
+	value = malloc(value_size);
+	if (!value) {
+		free(pathname);
+		return NULL;
+	}
+	memset(value, 0, value_size);
+	ret = getxattr(pathname, skey, value, value_size);
+	if (ret < 0) {
+		fprintf(stderr, "cannot get secret key from %s, errno %d\n",
+			pathname, errno);
+		free(value);
+		value = NULL;
+	} else
+		*out_len = ret;
+	free(pathname);
+	return value;
 }
 
 static int find_bucket(char *dirname, char *name, struct linked_list *head)

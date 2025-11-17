@@ -9,6 +9,25 @@
 #include "s3_api.h"
 #include "s3gw.h"
 
+char *bin2hex(unsigned char *input, int input_len, size_t *out_len)
+{
+	char *output, *p;
+	int output_len, i;
+
+	output_len = input_len * 2 + 1;
+	output = malloc(output_len);
+	if (!output)
+		return NULL;
+	memset(output, 0, output_len);
+
+	for (i = 0; i < input_len; i++) {
+		p = &output[i * 2];
+		sprintf(p, "%02x", input[i]);
+	}
+	*out_len = output_len;
+	return output;
+}
+
 unsigned char *md5sum(char *input, int input_len, int *out_len)
 {
 	OSSL_LIB_CTX *ctx;
@@ -81,9 +100,10 @@ char *auth_string_to_sign(struct s3gw_request *req, int *out_len)
 	size_t hash_len;
 	char *output = NULL;
 	struct s3gw_header *hdr;
-	char *tstamp, *scope, *payload_hash, *input, *save;
+	char *tstamp = NULL, *scope = NULL, *sig_hdr = NULL;
+	char *payload_hash = NULL, *input, *save;
 	unsigned char *request_hash = NULL;
-	char *hdrlist, *hdr_key;
+	char *hdrlist = NULL, *hdr_key;
 
 	ctx = OSSL_LIB_CTX_new();
 	if (ctx == NULL) {
@@ -124,15 +144,30 @@ char *auth_string_to_sign(struct s3gw_request *req, int *out_len)
 		if (!strcmp(hdr->key, "X-Amz-Content-SHA256"))
 			payload_hash = hdr->value;
 	}
-	list_for_each_entry(hdr, &req->auth_list, list) {
-		if (!strcmp(hdr->key, "Credential"))
-			scope = hdr->value;
-		if (!strcmp(hdr->key, "SignedHeader"))
-			hdrlist = strdup(hdr->value);
+	if (!payload_hash) {
+		fprintf(stderr, "No payload hash\n");
+		goto err_free;
 	}
-
+	if (!tstamp) {
+		fprintf(stderr, "No timestamp\n");
+		goto err_free;
+	}
+	list_for_each_entry(hdr, &req->auth_list, list) {
+		if (!strcmp(hdr->key, "Credential")) {
+			scope = strchr(hdr->value, '/');
+			scope++;
+		}
+		if (!strcmp(hdr->key, "SignedHeaders")) {
+			hdrlist = strdup(hdr->value);
+			sig_hdr = hdr->value;
+		}
+	}
+	if (!hdrlist) {
+		fprintf(stderr, "No credentials\n");
+		goto err_free;
+	}
 	asprintf(&input, "%s\n%s\n%s\n", http_method_str(req->http.method),
-		 req->url, req->query);
+		 req->url, req->query ? req->query : "");
 	printf("%s", input);
 	if (EVP_DigestUpdate(md_ctx, input, strlen(input)) != 1) {
 		fprintf(stderr, "EVP_DigestUpdate(hamlet_1) failed.\n");
@@ -152,17 +187,18 @@ char *auth_string_to_sign(struct s3gw_request *req, int *out_len)
 		}
 		hdr_key = strtok_r(NULL, ";", &save);
 	}
+	asprintf(&input, "\n%s\n", sig_hdr);
+	EVP_DigestUpdate(md_ctx, input, strlen(input));
+	printf("%s", input);
+	free(input);
+	printf("%s\n", payload_hash);
 	EVP_DigestUpdate(md_ctx, payload_hash, strlen(payload_hash));
 
 	if (EVP_DigestFinal(md_ctx, request_hash, &request_len) != 1) {
 		fprintf(stderr, "EVP_DigestFinal() failed.\n");
 		goto err_free;
 	}
-	OPENSSL_buf2hexstr_ex(NULL, 0, &hash_len, request_hash,
-			      request_len, '\0');
-	payload_hash = malloc(hash_len);
-	OPENSSL_buf2hexstr_ex(payload_hash, hash_len, &hash_len, request_hash,
-			      request_len, '\0');
+	payload_hash = bin2hex(request_hash, request_len, &hash_len);
 	asprintf(&output, "%s\n%s\n%s\n%s", "AWS4-HMAC-SHA256",
 		 tstamp, scope, payload_hash);
 	*out_len = strlen(output);
@@ -182,6 +218,190 @@ err_free:
 
 unsigned char *hmac_sha256(const void *key, int keylen,
 			   const unsigned char *data, int datalen,
-			   unsigned char *result, unsigned int *resultlen) {
+			   unsigned char *result, unsigned int *resultlen)
+{
 	return HMAC(EVP_sha256(), key, keylen, data, datalen, result, resultlen);
+}
+
+char *auth_sign_str(struct s3gw_request *req, char *str_to_sign, int *out_len)
+{
+	struct s3gw_header *hdr;
+	char *output = NULL;
+	unsigned char date_key[32], service_key[32], region_key[32];
+	unsigned char sign_key[32], signature[32];
+	unsigned int date_key_len = 32, service_key_len = 32;
+	unsigned int region_key_len = 32;
+	unsigned int sign_key_len = 32, signature_len = 32;
+	char *cred = NULL, *secret, *tmp;
+	char *p, *owner_str, *tstamp, *region, *service, *key, *sign_str;
+	int secret_len;
+	size_t output_len, tmp_len;
+
+	list_for_each_entry(hdr, &req->auth_list, list) {
+		if (!strcmp(hdr->key, "Credential")) {
+			cred = hdr->value;
+			break;
+		}
+	}
+	if (!cred) {
+		fprintf(stderr, "no credentials found\n");
+		return NULL;
+	}
+
+	owner_str = strdup(cred);
+	if (!owner_str)
+		return NULL;
+	p = strchr(owner_str, '/');
+	if (!p)
+		goto out_free;
+	*p = '\0';
+	p++;
+	tstamp = p;
+	p = strchr(tstamp, '/');
+	if (!p)
+		goto out_free;
+	*p = '\0';
+	p++;
+	region = p;
+	p = strchr(region, '/');
+	if (!p)
+		goto out_free;
+	*p = '\0';
+	p++;
+	service = p;
+	p = strchr(service, '/');
+	if (!p)
+		goto out_free;
+	*p = '\0';
+	sign_str = p + 1;
+
+	printf("using default secrets\n");
+	secret = req->ctx->secret;
+
+	asprintf(&key, "AWS4%s", secret);
+
+	printf("key %s, tstamp %s\n", key, tstamp);
+	if (!hmac_sha256((const unsigned char *)key, strlen(key),
+			 (const unsigned char *)tstamp, strlen(tstamp),
+			 date_key, &date_key_len)) {
+		fprintf(stderr, "Failed to generate date key\n");
+		goto out_free;
+	}
+	free(key);
+	tmp = bin2hex(date_key, date_key_len, &tmp_len);
+	if (!tmp)
+		goto out_free;
+	printf("date key (%s, len %ld): %s\n", tstamp, strlen(tstamp), tmp);
+	free(tmp);
+	if (!hmac_sha256(date_key, date_key_len,
+			 (const unsigned char *)region, strlen(region),
+			 region_key, &region_key_len)) {
+		fprintf(stderr, "Failed to generate region key\n");
+		goto out_free;
+	}
+	tmp = bin2hex(region_key, region_key_len, &tmp_len);
+	printf("region key (%s, len %d): %s\n", region, region_key_len, tmp);
+	free(tmp);
+	if (!hmac_sha256(region_key, region_key_len,
+			 (const unsigned char *)service, strlen(service),
+			 service_key, &service_key_len)) {
+		fprintf(stderr, "Failed to generage service key\n");
+		goto out_free;
+	}
+	tmp = bin2hex(service_key, service_key_len, &tmp_len);
+	printf("service key (%s, len %d): %s\n", service, service_key_len, tmp);
+	free(tmp);
+	if (!hmac_sha256(service_key, service_key_len,
+			 (const unsigned char *)sign_str, strlen(sign_str),
+			 sign_key, &sign_key_len)) {
+		fprintf(stderr, "Failed to generate signining key\n");
+		goto out_free;
+	}
+	tmp = bin2hex(sign_key, sign_key_len, &tmp_len);
+	printf("sign key (%s, len %d): %s\n", sign_str, sign_key_len, tmp);
+	free(tmp);
+	if (!hmac_sha256(sign_key, sign_key_len,
+			 (const unsigned char *)str_to_sign,
+			 strlen(str_to_sign),
+			 signature, &signature_len)) {
+		fprintf(stderr, "Failed generate signature\n");
+		goto out_free;
+	}
+	output = bin2hex(signature, signature_len, &output_len);
+	if (output)
+		*out_len = output_len;
+
+out_free:
+	free(owner_str);
+	return output;
+}
+
+int check_authorization(struct s3gw_request *req)
+{
+	struct s3gw_header *hdr;
+	const char auth_str[] = "AWS4-HMAC-SHA256";
+	char *auth, *p, *save, *buf, *sig;
+	struct s3gw_header *auth_hdr;
+	int buflen, siglen;
+
+	list_for_each_entry(hdr, &req->hdr_list, list) {
+		if (!strcmp("Authorization", hdr->key)) {
+			auth = strdup(hdr->value);
+			break;
+		}
+	}
+	if (!auth)
+		return -EPERM;
+	p = strtok_r(auth, " ", &save);
+	if (!p)
+		return -EINVAL;
+	if (strcmp(p, auth_str)) {
+		fprintf(stderr, "Unhandled authentication method '%s'\n", p);
+		return -EINVAL;
+	}
+	while ((p = strtok_r(NULL, ", ", &save)) != NULL) {
+		char *key, *value = NULL;
+
+		auth_hdr = malloc(sizeof(*auth_hdr));
+		if (!auth_hdr) {
+			free(auth);
+			return -ENOMEM;
+		}
+		memset(auth_hdr, 0, sizeof(*auth_hdr));
+		key = p;
+		value = strchr(key, '=');
+		if (value) {
+			*value = '\0';
+			value++;
+		}
+		auth_hdr->key = strdup(key);
+		if (!auth_hdr->key) {
+			free(auth);
+			return -ENOMEM;
+		}
+		auth_hdr->value = strdup(value);
+		if (!auth_hdr->value) {
+			free(auth_hdr->key);
+			free(auth);
+			return -ENOMEM;
+		}
+		printf("adding auth '%s': %s\n",
+		       auth_hdr->key, auth_hdr->value);
+		list_add(&auth_hdr->list, &req->auth_list);
+	}
+	free(auth);
+	buf = auth_string_to_sign(req, &buflen);
+	if (!buf)
+		return -EPERM;
+	printf("string to sign:\n%s\n", buf);
+
+	sig = auth_sign_str(req, buf, &siglen);
+	if (!sig) {
+		free(buf);
+		return -EPERM;
+	}
+	printf("signature: %s\n", sig);
+	free(buf);
+	free(sig);
+	return 0;
 }
