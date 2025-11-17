@@ -53,17 +53,6 @@ static int parse_header_value(http_parser *http, const char *at, size_t len)
 	return 0;
 }
 
-struct url_options {
-	enum s3_api_ops op;
-	char *str;
-};
-
-static struct url_options s3_url_options[] = {
-	{ S3_OP_ListObjects, "prefix=" },
-	{ S3_OP_ListObjects, "max-keys=" },
-	{ S3_OP_ListObjects, "marker=" },
-};
-
 static int parse_url(http_parser *http, const char *at, size_t len)
 {
 	struct s3gw_request *req = http->data;
