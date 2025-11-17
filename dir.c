@@ -235,7 +235,8 @@ void clear_object(struct s3gw_object *obj)
 	}
 }
 
-int find_objects(struct s3gw_request *req, struct linked_list *head)
+int find_objects(struct s3gw_request *req, struct linked_list *head,
+		 char *prefix)
 {
 	char *dirname;
 	int ret, num = 0;
@@ -263,6 +264,9 @@ int find_objects(struct s3gw_request *req, struct linked_list *head)
 		if (se->d_type == DT_REG) {
 			if (req->object &&
 			    strcmp(req->object, se->d_name))
+				continue;
+			if (prefix && strncmp(se->d_name, prefix,
+					      strlen(prefix)))
 				continue;
 			ret = find_object(dirname, se->d_name, head);
 			if (ret < 0)

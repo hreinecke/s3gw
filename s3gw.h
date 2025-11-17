@@ -66,7 +66,6 @@ struct s3gw_request {
 	char *query;
 	char *bucket;
 	char *object;
-	char *prefix;
 };
 
 void setup_parser(http_parser_settings *settings);
@@ -80,7 +79,8 @@ size_t handle_request(struct s3gw_request *req);
 int create_owner_secret(struct s3gw_ctx *ctx, char *owner_id, char *secret);
 char *get_owner_secret(struct s3gw_ctx *ctx, char *owner_id, int *out_len);
 int find_buckets(struct s3gw_request *req, struct linked_list *head);
-int find_objects(struct s3gw_request *req, struct linked_list *head);
+int find_objects(struct s3gw_request *req, struct linked_list *head,
+		 char *prefix);
 void clear_object(struct s3gw_object *obj);
 
 /* bucket.c */

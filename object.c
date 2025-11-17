@@ -19,7 +19,7 @@ static char list_objects_preamble[] =
 	"<Name>%s</Name>\r\n"
 	"%s%s%s\r\n"
 	"<Marker/>\r\n"
-	"<MaxKeys>100</MaxKeys>\r\n"
+	"<MaxKeys>%lu</MaxKeys>\r\n"
 	"<IsTruncated>%s</IsTruncated>\r\n";
 static char list_objects_template[] =
 	"<Contents>\r\n"
@@ -39,11 +39,20 @@ char *list_objects(struct s3gw_request *req, int *outlen)
 {
 	struct linked_list top;
 	struct s3gw_object *o, *t;
-	char *buf;
+	struct s3gw_header *hdr;
+	char *buf, *prefix = NULL;
 	size_t off = 0, total = 4096, hlen;
 	enum http_status s = HTTP_STATUS_OK;
 	int ret, num;
+	unsigned long max_keys = 200;
 
+	list_for_each_entry(hdr, &req->query_list, list) {
+		if (!strcmp(hdr->key, "max-keys") && hdr->value) {
+			max_keys = strtoul(hdr->value, NULL, 10);
+		}
+		if (!strcmp(hdr->key, "prefix"))
+			prefix = hdr->value;
+	}
 	buf = malloc(total);
 	if (!buf)
 		return NULL;
@@ -59,7 +68,7 @@ char *list_objects(struct s3gw_request *req, int *outlen)
 	hlen = off;
 
 	INIT_LINKED_LIST(&top);
-	num = find_objects(req, &top);
+	num = find_objects(req, &top, prefix);
 	if (num < 0) {
 		if (num != -EPERM) {
 			ret = num;
@@ -71,9 +80,10 @@ char *list_objects(struct s3gw_request *req, int *outlen)
 	}
 	printf("found %d objects\n", num);
 	ret = snprintf(buf + off, total - off, list_objects_preamble,
-		       req->bucket, req->prefix ? "<Prefix>" : "",
-		       req->prefix ? req->prefix : "<Prefix/>",
-		       req->prefix ? "</Prefix>" : "", "false");
+		       req->bucket, prefix ? "<Prefix>" : "",
+		       prefix ? prefix : "<Prefix/>",
+		       prefix ? "</Prefix>" : "",
+		       max_keys, "false");
 	if (ret < 0) {
 		s = HTTP_STATUS_INTERNAL_SERVER_ERROR;
 		goto out_error;
@@ -154,7 +164,7 @@ char *check_object(struct s3gw_request *req, int *outlen)
 	int ret;
 
 	INIT_LINKED_LIST(&top);
-	ret = find_objects(req, &top);
+	ret = find_objects(req, &top, NULL);
 	if (ret < 0) {
 		if (ret == -EPERM)
 			s = HTTP_STATUS_FORBIDDEN;

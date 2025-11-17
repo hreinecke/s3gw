@@ -71,10 +71,6 @@ void reset_request(struct s3gw_request *req)
 		req->tstamp = NULL;
 		req->region = NULL;
 	}
-	if (req->prefix) {
-		free(req->prefix);
-		req->prefix = NULL;
-	}
 	req->next_hdr = NULL;
 	req->op = S3_OP_Unknown;
 }
