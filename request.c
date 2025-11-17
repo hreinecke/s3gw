@@ -16,6 +16,7 @@ void init_request(struct s3gw_ctx *ctx, struct s3gw_request *req)
 	memset(req, 0, sizeof(*req));
 	INIT_LINKED_LIST(&req->hdr_list);
 	INIT_LINKED_LIST(&req->auth_list);
+	INIT_LINKED_LIST(&req->query_list);
 	req->op = S3_OP_Unknown;
 	http_parser_init(&req->http, HTTP_REQUEST);
 	req->http.data = req;
@@ -41,6 +42,18 @@ void reset_request(struct s3gw_request *req)
 		free(hdr);
 	}
 	list_for_each_entry_safe(hdr, tmp, &req->auth_list, list) {
+		list_del_init(&hdr->list);
+		if (hdr->value) {
+			free(hdr->value);
+			hdr->value = NULL;
+		}
+		if (hdr->key) {
+			free(hdr->key);
+			hdr->key = NULL;
+		}
+		free(hdr);
+	}
+	list_for_each_entry_safe(hdr, tmp, &req->query_list, list) {
 		list_del_init(&hdr->list);
 		if (hdr->value) {
 			free(hdr->value);

@@ -57,6 +57,7 @@ struct s3gw_request {
 	enum s3_api_ops op;
 	struct linked_list hdr_list;
 	struct linked_list auth_list;
+	struct linked_list query_list;
 	void *next_hdr;
 	char *owner;
 	char *region;
