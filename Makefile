@@ -1,4 +1,5 @@
 PRG := s3gw
+USERADM := s3gw_useradm
 OBJS := tls.o tcp.o request.o parser.o format.o \
 	dir.o bucket.o object.o auth.o http_parser.o
 LIBS := -lssl -lcrypto -luuid
@@ -6,7 +7,7 @@ CFLAGS = -Wall -g
 CERT := server-cert.pem
 KEY := server-key.pem
 
-all: $(PRG) $(CERT) $(KEY)
+all: $(PRG) $(USERADM) $(CERT) $(KEY)
 
 test_auth: test_auth.o $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
@@ -15,6 +16,9 @@ clean:
 	rm -f $(PRG) $(CERT) $(OBJS)
 
 $(PRG): server.o $(OBJS)
+	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
+
+$(USERADM): s3gw_useradm.o $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
 
 $(CERT):

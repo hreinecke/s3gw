@@ -124,17 +124,25 @@ static int parse_url(http_parser *http, const char *at, size_t len)
 			*p = '\0';
 			p++;
 			req->object = p;
-			req->op = http->method == HTTP_HEAD ?
-				   S3_OP_HeadObject : S3_OP_GetObject;
-		} else {
-			req->op = http->method == HTTP_HEAD ?
-				S3_OP_HeadBucket : S3_OP_ListObjects;
 		}
-	} else {
-		if (http->method == HTTP_GET)
-			req->op = S3_OP_ListBuckets;
 	}
-	
+
+	switch (http->method) {
+	case HTTP_GET:
+		if (!req->bucket)
+			req->op = S3_OP_ListBuckets;
+		else if (!req->object)
+			req->op = S3_OP_ListObjects;
+		else
+			req->op = S3_OP_GetObject;
+		break;
+	case HTTP_HEAD:
+		if (req->object)
+			req->op = S3_OP_HeadObject;
+		else if (req->bucket)
+			req->op = S3_OP_HeadBucket;
+		break;
+	}
 	return 0;
 }
 

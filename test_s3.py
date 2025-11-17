@@ -32,3 +32,11 @@ for bucket in all_buckets['Buckets']:
                 Bucket=bucket['Name'],
                 Key=obj['Key'])
             print(f'Object ETag: {head["ETag"]}')
+
+resp = s3_client.create_bucket(
+    Bucket='s3gw-test-bucket-1',
+    CreateBucketConfiguration={
+        'LocationConstraint': 'eu-west-2',
+        },
+    )
+print(f'{resp}')

@@ -56,7 +56,7 @@ char *format_response(struct s3gw_request *req, int *outlen)
 		break;
 	default:
 		fprintf(stderr, "Invalid op %d\n", req->op);
-		buf = put_status(HTTP_STATUS_NOT_FOUND, NULL, outlen);
+		buf = put_status(HTTP_STATUS_NOT_IMPLEMENTED, NULL, outlen);
 		break;
 	}
 	return buf;
