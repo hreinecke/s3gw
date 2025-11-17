@@ -100,7 +100,7 @@ char *list_objects(struct s3gw_request *req, int *outlen)
 			       o->etag[4], o->etag[5], o->etag[6], o->etag[7],
 			       o->etag[8], o->etag[9], o->etag[10], o->etag[11],
 			       o->etag[12], o->etag[13], o->etag[14],
-			       o->etag[15], o->size, req->ctx->owner);
+			       o->etag[15], o->size, req->owner);
 		if (ret < 0)
 			fprintf(stderr, "failed to format time\n");
 		else

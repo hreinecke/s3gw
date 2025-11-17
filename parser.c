@@ -92,7 +92,15 @@ static int parse_url(http_parser *http, const char *at, size_t len)
 			*p = '\0';
 			p++;
 			req->object = p;
+			req->op = http->method == HTTP_HEAD ?
+				   S3_OP_HeadObject : S3_OP_GetObject;
+		} else {
+			req->op = http->method == HTTP_HEAD ?
+				S3_OP_HeadBucket : S3_OP_ListObjects;
 		}
+	} else {
+		if (http->method == HTTP_GET)
+			req->op = S3_OP_ListBuckets;
 	}
 	
 	return 0;

@@ -17,8 +17,6 @@ void init_request(struct s3gw_ctx *ctx, struct s3gw_request *req)
 	INIT_LINKED_LIST(&req->hdr_list);
 	INIT_LINKED_LIST(&req->auth_list);
 	req->op = S3_OP_Unknown;
-	if (ctx)
-		req->region = strdup(ctx->region);
 	http_parser_init(&req->http, HTTP_REQUEST);
 	req->http.data = req;
 	req->ctx = ctx;
@@ -54,8 +52,10 @@ void reset_request(struct s3gw_request *req)
 		}
 		free(hdr);
 	}
-	if (req->region) {
-		free(req->region);
+	if (req->owner) {
+		free(req->owner);
+		req->owner = NULL;
+		req->tstamp = NULL;
 		req->region = NULL;
 	}
 	if (req->prefix) {

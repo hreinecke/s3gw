@@ -138,7 +138,7 @@ int find_buckets(struct s3gw_request *req, struct linked_list *head)
 
 	ret = asprintf(&dirname, "%s/%s",
 		       req->ctx->base_dir,
-		       req->ctx->owner);
+		       req->owner);
 	if (ret < 0)
 		return -ENOMEM;
 	sd = opendir(dirname);
@@ -147,6 +147,7 @@ int find_buckets(struct s3gw_request *req, struct linked_list *head)
 		free(dirname);
 		return -EPERM;
 	}
+	printf("reading directory %s\n", dirname);
 	while ((se = readdir(sd))) {
 		if (!strcmp(se->d_name, ".") ||
 		    !strcmp(se->d_name, ".."))
@@ -243,7 +244,7 @@ int find_objects(struct s3gw_request *req, struct linked_list *head)
 
 	ret = asprintf(&dirname, "%s/%s/%s",
 		       req->ctx->base_dir,
-		       req->ctx->owner,
+		       req->owner,
 		       req->bucket);
 	if (ret < 0)
 		return -ENOMEM;

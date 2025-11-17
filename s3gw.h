@@ -19,9 +19,6 @@ struct s3gw_ctx {
 	const char *cert;
 	const char *key;
 	const char *base_dir;
-	const char *owner;
-	const char *secret;
-	const char *region;
 	int fd;
 	SSL_CTX *ssl_ctx;
 	BIO *accept_bio;
@@ -61,7 +58,9 @@ struct s3gw_request {
 	struct linked_list hdr_list;
 	struct linked_list auth_list;
 	void *next_hdr;
+	char *owner;
 	char *region;
+	char *tstamp;
 	char *url;
 	char *query;
 	char *bucket;

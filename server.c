@@ -17,9 +17,7 @@
 #include "s3_api.h"
 #include "s3gw.h"
 
-static char default_region[] = "eu-west-2";
 static char default_base_dir[] = "/home/kvm/s3";
-static char default_owner[] = "aaa";
 
 int main(int argc, char *argv[])
 {
@@ -27,7 +25,6 @@ int main(int argc, char *argv[])
 	char *default_key = "server-key.pem";
 	struct s3gw_ctx *ctx = NULL;
 	bool use_tls = false;
-	int ret;
 
 	ctx = malloc(sizeof(*ctx));
 	if (!ctx) {
@@ -36,16 +33,7 @@ int main(int argc, char *argv[])
 	}
 	ctx->cert = default_cert;
 	ctx->key = default_key;
-	ctx->region = default_region;
-	ctx->owner = default_owner;
 	ctx->base_dir = default_base_dir;
-
-	ret = create_owner_secret(ctx, default_owner, "bbb");
-	if (ret < 0) {
-		fprintf(stderr, "failed to create owner, error %d\n", ret);
-		free(ctx);
-		exit(1);
-	}
 
 	if (argc != 2) {
 		fprintf(stderr, "Usage: %s <url>\n", argv[0]);

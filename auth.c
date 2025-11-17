@@ -231,7 +231,7 @@ char *auth_sign_str(struct s3gw_request *req, char *str_to_sign, int *out_len)
 	unsigned int region_key_len = 32;
 	unsigned int sign_key_len = 32, signature_len = 32;
 	char *cred = NULL, *secret;
-	char *p, *owner_id, *tstamp, *region, *service, *key, *sign_str;
+	char *p, *service, *key, *sign_str;
 	int secret_len;
 	size_t output_len;
 
@@ -246,22 +246,22 @@ char *auth_sign_str(struct s3gw_request *req, char *str_to_sign, int *out_len)
 		return NULL;
 	}
 
-	owner_id = strdup(cred);
-	if (!owner_id)
+	req->owner = strdup(cred);
+	if (!req->owner)
 		return NULL;
-	p = strchr(owner_id, '/');
+	p = strchr(req->owner, '/');
 	if (!p)
 		goto out_free;
 	*p = '\0';
 	p++;
-	tstamp = p;
-	p = strchr(tstamp, '/');
+	req->tstamp = p;
+	p = strchr(req->tstamp, '/');
 	if (!p)
 		goto out_free;
 	*p = '\0';
 	p++;
-	region = p;
-	p = strchr(region, '/');
+	req->region = p;
+	p = strchr(req->region, '/');
 	if (!p)
 		goto out_free;
 	*p = '\0';
@@ -273,24 +273,24 @@ char *auth_sign_str(struct s3gw_request *req, char *str_to_sign, int *out_len)
 	*p = '\0';
 	sign_str = p + 1;
 
-	secret = get_owner_secret(req->ctx, owner_id, &secret_len);
+	secret = get_owner_secret(req->ctx, req->owner, &secret_len);
 	if (!secret) {
 		fprintf(stderr, "No secret found for owner '%s'\n",
-			owner_id);
+			req->owner);
 		goto out_free;
 	}
 
 	asprintf(&key, "AWS4%s", secret);
 	if (!hmac_sha256((const unsigned char *)key, strlen(key),
-			 (const unsigned char *)tstamp, strlen(tstamp),
-			 date_key, &date_key_len)) {
+			 (const unsigned char *)req->tstamp,
+			 strlen(req->tstamp), date_key, &date_key_len)) {
 		fprintf(stderr, "Failed to generate date key\n");
 		goto out_free;
 	}
 	free(key);
 	if (!hmac_sha256(date_key, date_key_len,
-			 (const unsigned char *)region, strlen(region),
-			 region_key, &region_key_len)) {
+			 (const unsigned char *)req->region,
+			 strlen(req->region), region_key, &region_key_len)) {
 		fprintf(stderr, "Failed to generate region key\n");
 		goto out_free;
 	}
@@ -318,7 +318,12 @@ char *auth_sign_str(struct s3gw_request *req, char *str_to_sign, int *out_len)
 		*out_len = output_len;
 
 out_free:
-	free(owner_id);
+	if (!output) {
+		free(req->owner);
+		req->owner = NULL;
+		req->tstamp = NULL;
+		req->region = NULL;
+	}
 	return output;
 }
 

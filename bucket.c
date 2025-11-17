@@ -89,7 +89,7 @@ char *list_buckets(struct s3gw_request *req, int *outlen)
 		goto out_error;
 	}
 	ret = snprintf(buf + off, total - off,
-		       list_buckets_postamble, req->ctx->owner);
+		       list_buckets_postamble, req->owner);
 	if (ret < 0) {
 		s = HTTP_STATUS_INTERNAL_SERVER_ERROR;
 		goto out_error;
@@ -127,7 +127,7 @@ char *check_bucket(struct s3gw_request *req, int *outlen)
 	}
 	ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n"
 		       "x-amz-bucket-region: %s\r\n",
-		       s, http_status_str(s), req->ctx->region);
+		       s, http_status_str(s), req->region);
 	if (ret < 0)
 		buf = NULL;
 	else
