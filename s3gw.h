@@ -58,8 +58,11 @@ struct s3gw_request {
 	http_parser http;
 	enum s3_api_ops op;
 	struct linked_list hdr_list;
+	struct linked_list auth_list;
 	void *next_hdr;
 	char *region;
+	char *url;
+	char *query;
 	char *bucket;
 	char *object;
 	char *prefix;

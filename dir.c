@@ -30,20 +30,26 @@ int create_owner(struct s3gw_ctx *ctx, char *owner_id,
 		       ctx->base_dir, owner_id);
 	if (ret < 0)
 		return -ENOMEM;
+	if (!key || !secret)
+		return -EINVAL;
+
 	ret = stat(pathname, &st);
 	if (!ret) {
+		value_size = strlen(key);
 		ret = getxattr(pathname, akey, value, value_size);
 		if (ret > 0) {
-			if (strcmp(key, value)) {
+			if (strncmp(key, value, value_size)) {
 				printf("access key mismatch for %s\n",
 				       owner_id);
 				set_access_key = 2;
 			} else
 				set_access_key = 0;
 		}
+		value_size = strlen(secret);
 		ret = getxattr(pathname, skey, value, value_size);
 		if (ret > 0) {
-			if (strcmp(secret, value)) {
+			value_size = strlen(secret);
+			if (strncmp(secret, value, value_size)) {
 				printf("secret key mismatch for %s\n",
 					owner_id);
 				set_secret_key = 2;

@@ -32,7 +32,6 @@ static int parse_header(http_parser *http, const char *at, size_t len)
 	}
 	memset(hdr->key, 0, len + 1);
 	strncpy(hdr->key, at, len);
-	printf("header: %s\n", hdr->key);
 	list_add(&hdr->list, &req->hdr_list);
 	req->next_hdr = hdr;
 	return 0;
@@ -68,95 +67,33 @@ static struct url_options s3_url_options[] = {
 static int parse_url(http_parser *http, const char *at, size_t len)
 {
 	struct s3gw_request *req = http->data;
-	char buf[2048], *opt = NULL, *p;
-	char *bucket, *object = NULL;
 	const char *method = http_method_str(http->method);
 
-	memset(buf, 0, sizeof(buf));
-	strncpy(buf, at, len);
-	printf("urn: %s %s\n", method, buf);
-	switch (http->method) {
-	case HTTP_HEAD:
-		if (strlen(buf) < 2) {
-			break;
-		}
-		bucket = buf + 1;
-		p = strchr(bucket, '/');
-		if (p) {
-			*p = '\0';
-			p++;
-			object = p;
-		} else
-			p = bucket;
-
-		opt = strchr(p, '?');
-		if (opt) {
-			*opt = '\0';
-			opt++;
-		}
-		if (object) {
-			req->op = S3_OP_HeadObject;
-			req->bucket = strdup(bucket);
-			req->object = strdup(object);
-			printf("using object %s/%s\n",
-			       req->bucket, req->object);
-		} else {
-			req->op = S3_OP_HeadBucket;
-			req->bucket = strdup(bucket);
-			printf("using bucket '%s'\n", req->bucket);
-		}
-		break;
-	case HTTP_PUT:
-		break;
-	case HTTP_GET:
-		if (!strncmp(buf, "/", len)) {
-			req->op = S3_OP_ListBuckets;
-			break;
-		}
-		p = strchr(buf, '?');
-		if (p) {
-			*p = '\0';
-			req->bucket = strdup(buf + 1);
-			req->op = S3_OP_ListObjects;
-			p++;
-			opt = p;
-			printf("using bucket '%s' (opt '%s')\n",
-			       req->bucket, opt);
-		}
-		break;
-	default:
-		break;
+	req->url = malloc(len + 1);
+	if (!req->url)
+		return 0;
+	memset(req->url, 0, len + 1);
+	memcpy(req->url, at, len); 
+	req->query = strchr(req->url, '?');
+	if (req->query) {
+		*req->query = '\0';
+		req->query++;
 	}
+	printf("urn: %s %s\n", method, req->url);
+	if (strlen(req->url) > 1) {
+		char *p;
 
-	while (opt) {
-		int i;
-		char *val = NULL;
-
-		p = strchr(opt, '&');
+		req->bucket = strdup(req->url + 1);
+		if (!req->bucket)
+			return 0;
+		p = strchr(req->bucket, '/');
 		if (p) {
 			*p = '\0';
 			p++;
+			req->object = p;
 		}
-		val = strchr(opt, '=');
-		if (val)
-			val++;
-		printf("parsing '%s' val '%s' (next '%s')\n",
-		       opt, val, p);
-		for (i = 0; i < ARRAY_SIZE(s3_url_options); i++) {
-			struct url_options *opts;
-
-			opts = &s3_url_options[i];
-			if (opts->op != req->op)
-				continue;
-			if (!strncmp(opt, opts->str,
-				     strlen(opts->str))) {
-				printf("using option '%s' value '%s'\n",
-				       opts->str, val);
-			}
-		}
-		opt = p;
 	}
-
+	
 	return 0;
 }
 
@@ -167,6 +104,7 @@ int parse_header_complete(http_parser *http)
 	char *host;
 
 	list_for_each_entry(hdr, &req->hdr_list, list) {
+		printf("header '%s': %s\n", hdr->key, hdr->value);
 		if (!strcmp(hdr->key, "Host")) {
 			host = hdr->value;
 			break;
