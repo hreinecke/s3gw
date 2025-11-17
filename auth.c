@@ -97,13 +97,14 @@ char *auth_string_to_sign(struct s3gw_request *req, int *out_len)
 	EVP_MD *md = NULL;
 	EVP_MD_CTX *md_ctx = NULL;
 	unsigned int request_len;
-	size_t hash_len;
+	size_t hash_len, off = 0;
 	char *output = NULL;
 	struct s3gw_header *hdr;
 	char *tstamp = NULL, *scope = NULL, *sig_hdr = NULL;
 	char *payload_hash = NULL, *input, *save;
 	unsigned char *request_hash = NULL;
-	char *hdrlist = NULL, *hdr_key;
+	char *hdrlist = NULL, *hdr_key, *query;
+	int ret;
 
 	ctx = OSSL_LIB_CTX_new();
 	if (ctx == NULL) {
@@ -168,8 +169,22 @@ char *auth_string_to_sign(struct s3gw_request *req, int *out_len)
 		fprintf(stderr, "No credentials\n");
 		goto err_free;
 	}
+	if (req->query) {
+		query = malloc(strlen(req->query) + 1);
+		off = 0;
+		list_for_each_entry(hdr, &req->query_list, list) {
+			ret = sprintf(query + off, "%s%s=%s",
+				      off == 0 ? "" : "&",
+				      hdr->key, hdr->value);
+			off += ret;
+		}
+	} else {
+		query = NULL;
+	}
 	asprintf(&input, "%s\n%s\n%s\n", http_method_str(req->http.method),
-		 req->url, req->query ? req->query : "");
+		 req->url, query ? query : "");
+	if (query)
+		free(query);
 	if (EVP_DigestUpdate(md_ctx, input, strlen(input)) != 1) {
 		fprintf(stderr, "EVP_DigestUpdate(hamlet_1) failed.\n");
 		goto err_free;

@@ -53,6 +53,47 @@ static int parse_header_value(http_parser *http, const char *at, size_t len)
 	return 0;
 }
 
+static int parse_query(struct s3gw_request *req)
+{
+	char *query, *q, *p, *save;
+	struct s3gw_header *hdr, *prev, *tmp;
+
+	query = strdup(req->query);
+	if (!query)
+		return -ENOMEM;
+
+	q = strtok_r(query, "&", &save);
+	while (q) {
+		hdr = malloc(sizeof(*hdr));
+		if (!hdr)
+			return -ENOMEM;
+		p = strchr(q, '=');
+		if (p) {
+			*p = '\0';
+			p++;
+		}
+		hdr->key = strdup(q);
+		hdr->value = NULL;
+		if (p)
+			hdr->value = strdup(p);
+		/* Sort the list alphabetically */
+		prev = NULL;
+		list_for_each_entry(tmp, &req->query_list, list) {
+			if (strcmp(tmp->key, hdr->key) < 0)
+				prev = tmp;
+		}
+		if (prev)
+			list_add(&hdr->list, &prev->list);
+		else
+			list_add(&hdr->list, &req->query_list);
+		q = strtok_r(NULL, "&", &save);
+	}
+	free(query);
+	list_for_each_entry(hdr, &req->query_list, list)
+		printf("query: %s = %s\n", hdr->key, hdr->value);
+	return 0;
+}
+
 static int parse_url(http_parser *http, const char *at, size_t len)
 {
 	struct s3gw_request *req = http->data;
@@ -67,6 +108,8 @@ static int parse_url(http_parser *http, const char *at, size_t len)
 	if (req->query) {
 		*req->query = '\0';
 		req->query++;
+		if (strlen(req->query))
+			parse_query(req);
 	}
 	printf("urn: %s %s %s\n", method, req->url,
 	       req->query ? req->query : "");
