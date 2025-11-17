@@ -79,7 +79,8 @@ static int parse_url(http_parser *http, const char *at, size_t len)
 		*req->query = '\0';
 		req->query++;
 	}
-	printf("urn: %s %s %s\n", method, req->url, req->query);
+	printf("urn: %s %s %s\n", method, req->url,
+	       req->query ? req->query : "");
 	if (strlen(req->url) > 1) {
 		char *p;
 
