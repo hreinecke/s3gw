@@ -47,7 +47,7 @@ char *list_objects(struct s3gw_request *req, int *outlen)
 	unsigned long max_keys = 200;
 
 	list_for_each_entry(hdr, &req->query_list, list) {
-		if (!strcmp(hdr->key, "max-keys") && hdr->value) {
+		if (!strcmp(hdr->key, "max-keys")) {
 			max_keys = strtoul(hdr->value, NULL, 10);
 		}
 		if (!strcmp(hdr->key, "prefix"))
