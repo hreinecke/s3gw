@@ -4,6 +4,8 @@
 #include <openssl/bio.h>
 #include <openssl/ssl.h>
 
+#include <libxml/tree.h>
+
 #include "http_parser.h"
 
 #include "utils.h"
@@ -54,6 +56,7 @@ struct s3gw_request {
 	int fd;
 	SSL *ssl;
 	http_parser http;
+	xmlDoc *xml;
 	enum s3_api_ops op;
 	struct linked_list hdr_list;
 	struct linked_list auth_list;

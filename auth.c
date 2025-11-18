@@ -352,7 +352,7 @@ int check_authorization(struct s3gw_request *req)
 	int buflen, siglen, ret = 0;
 
 	list_for_each_entry(hdr, &req->hdr_list, list) {
-		if (!strcmp("Authorization", hdr->key)) {
+		if (hdr->key && !strcmp("Authorization", hdr->key)) {
 			auth = strdup(hdr->value);
 			break;
 		}

@@ -6,14 +6,42 @@
 #include <openssl/bio.h>
 #include <openssl/ssl.h>
 
+#include <libxml/parser.h>
+
 #include "http_parser.h"
 
 #include "s3_api.h"
 #include "s3gw.h"
 
+static void print_xml(xmlNode *node)
+{
+	xmlNode *cur = NULL;
+
+	for (cur = node; cur; cur = cur->next) {
+		if (cur->type == XML_ELEMENT_NODE)
+			printf("xml node '%s'\n",
+			       cur->name);
+		else if (cur->type == XML_TEXT_NODE)
+			printf("xml text '%s': '%s'\n",
+			       cur->name, cur->content);
+		print_xml(cur->children);
+	}
+}
+
 static int parse_xml(http_parser *http, const char *body, size_t len)
 {
-	printf("data: %s\n", body);
+	struct s3gw_request *req = http->data;
+	xmlNode *root;
+
+	if (!len)
+		return 0;
+	req->xml = xmlParseMemory(body, len);
+	if (!req->xml) {
+		fprintf(stderr, "failed to parse body\n");
+		return 0;
+	}
+	root = xmlDocGetRootElement(req->xml);
+	print_xml(root);
 	return 0;
 }
 
@@ -141,6 +169,12 @@ static int parse_url(http_parser *http, const char *at, size_t len)
 			req->op = S3_OP_HeadObject;
 		else if (req->bucket)
 			req->op = S3_OP_HeadBucket;
+		break;
+	case HTTP_PUT:
+		if (req->object)
+			req->op = S3_OP_PutObject;
+		else if (req->bucket)
+			req->op = S3_OP_CreateBucket;
 		break;
 	}
 	return 0;

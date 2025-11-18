@@ -2,7 +2,7 @@ PRG := s3gw
 USERADM := s3gw_useradm
 OBJS := tls.o tcp.o request.o parser.o format.o \
 	dir.o bucket.o object.o auth.o http_parser.o
-LIBS := -lssl -lcrypto -luuid
+LIBS := -lssl -lcrypto -luuid -lxml2
 CFLAGS = -Wall -g
 CERT := server-cert.pem
 KEY := server-key.pem
