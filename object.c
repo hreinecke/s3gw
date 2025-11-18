@@ -141,8 +141,7 @@ static char object_template[]=
 	"HTTP/1.1 %d %s\r\n"
 	"Last-Modified: %s\r\n"
 	"Content-Length: %lu\r\n"
-	"ETag: %02x%02x%02x%02x%02x%02x%02x"
-	"%02x%02x%02x%02x%02x%02x%02x%02x%02x\r\n"
+	"ETag: %s\r\n"
 	"Content-Type: application/binary\r\n"
 	"Connection: close\r\n"
 	"Server: s3gw\r\n";
@@ -166,18 +165,21 @@ char *check_object(struct s3gw_request *req, int *outlen)
 			s = HTTP_STATUS_NOT_FOUND;
 		goto out_error;
 	}
+	if (ret > 1) {
+		s = HTTP_STATUS_CONFLICT;
+		goto out_error;
+	}
 	list_for_each_entry_safe(o, t, &top, list) {
+		char *etag;
+		size_t etag_len;
+
 		list_del(&o->list);
 		tm = localtime(&o->mtime);
 		strftime(time_str, 64, "%FT%T%z", tm);
+		etag = bin2hex(o->etag, 16, &etag_len);
 		ret = asprintf(&buf, object_template,
 			       s, http_status_str(s),
-			       time_str, o->size,
-			       o->etag[0], o->etag[1], o->etag[2], o->etag[3],
-			       o->etag[4], o->etag[5], o->etag[6], o->etag[7],
-			       o->etag[8], o->etag[9], o->etag[10], o->etag[11],
-			       o->etag[12], o->etag[13], o->etag[14],
-			       o->etag[15]);
+			       time_str, o->size, etag);
 		if (ret < 0) {
 			s = HTTP_STATUS_INTERNAL_SERVER_ERROR;
 			goto out_error;
