@@ -136,6 +136,10 @@ int find_buckets(struct s3gw_request *req, struct linked_list *head)
 	struct dirent *se;
 	DIR *sd;
 
+	if (!req->owner) {
+		fprintf(stderr, "No owner set\n");
+		return -EINVAL;
+	}
 	ret = asprintf(&dirname, "%s/%s",
 		       req->ctx->base_dir,
 		       req->owner);
