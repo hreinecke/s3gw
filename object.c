@@ -16,6 +16,60 @@
 static xmlChar xmlns[] =
 	"xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\"";
 
+char *create_object(struct s3gw_request *req, int *outlen)
+{
+	char *buf;
+	int ret;
+
+	ret = dir_create_object(req);
+	if (ret < 0) {
+		switch (ret) {
+		case -EEXIST:
+			req->status = HTTP_STATUS_CONFLICT;
+			break;
+		default:
+			req->status = HTTP_STATUS_BAD_REQUEST;
+			break;
+		}
+	}
+	req->status = HTTP_STATUS_OK;
+
+	ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n",
+		       req->status, http_status_str(req->status));
+	if (ret > 0)
+		*outlen = ret;
+	else
+		buf = NULL;
+	return buf;
+}
+
+char *delete_object(struct s3gw_request *req, int *outlen)
+{
+	char *buf;
+	int ret;
+
+	ret = dir_delete_object(req);
+	if (ret < 0) {
+		switch (ret) {
+		case -EEXIST:
+			req->status = HTTP_STATUS_CONFLICT;
+			break;
+		default:
+			req->status = HTTP_STATUS_BAD_REQUEST;
+			break;
+		}
+	}
+	req->status = HTTP_STATUS_NO_CONTENT;
+
+	ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n",
+		       req->status, http_status_str(req->status));
+	if (ret > 0)
+		*outlen = ret;
+	else
+		buf = NULL;
+	return buf;
+}
+
 char *list_objects(struct s3gw_request *req, int *outlen)
 {
 	struct linked_list top;
@@ -27,7 +81,6 @@ char *list_objects(struct s3gw_request *req, int *outlen)
 	char *buf, *prefix;
 	xmlChar *xml;
 	char *line;
-	enum http_status s = HTTP_STATUS_OK;
 	int ret, cur = 0, num, line_len, xml_len;
 	unsigned long max_keys = 0;
 
@@ -64,7 +117,7 @@ char *list_objects(struct s3gw_request *req, int *outlen)
 	if (num < 0) {
 		if (num != -EPERM) {
 			ret = num;
-			s = HTTP_STATUS_NOT_FOUND;
+			req->status = HTTP_STATUS_NOT_FOUND;
 			goto out_error;
 		}
 		num = 0;
@@ -115,10 +168,12 @@ char *list_objects(struct s3gw_request *req, int *outlen)
 	free(line);
 	xmlDocDumpMemory(doc, &xml, &xml_len);
 	xmlFreeDoc(doc);
+	req->status = HTTP_STATUS_OK;
 
 	ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n"
 		       "Content-Length: %d\r\n\r\n%s",
-		       s, http_status_str(s), xml_len, xml);
+		       req->status, http_status_str(req->status),
+		       xml_len, xml);
 	if (ret < 0) {
 		free(xml);
 		return NULL;
@@ -129,7 +184,7 @@ char *list_objects(struct s3gw_request *req, int *outlen)
 
 out_error:
 	ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n",
-		       s, http_status_str(s));
+		       req->status, http_status_str(req->status));
 	if (ret > 0)
 		*outlen = ret;
 	else
@@ -150,7 +205,6 @@ char *check_object(struct s3gw_request *req, int *outlen)
 {
 	struct linked_list top;
 	struct s3gw_object *o, *t;
-	enum http_status s = HTTP_STATUS_OK;
 	char time_str[64];
 	struct tm *tm;
 	char *buf;
@@ -160,15 +214,16 @@ char *check_object(struct s3gw_request *req, int *outlen)
 	ret = dir_find_objects(req, &top, NULL);
 	if (ret < 0) {
 		if (ret == -EPERM)
-			s = HTTP_STATUS_FORBIDDEN;
+			req->status = HTTP_STATUS_FORBIDDEN;
 		else
-			s = HTTP_STATUS_NOT_FOUND;
+			req->status = HTTP_STATUS_NOT_FOUND;
 		goto out_error;
 	}
 	if (ret > 1) {
-		s = HTTP_STATUS_CONFLICT;
+		req->status = HTTP_STATUS_CONFLICT;
 		goto out_error;
 	}
+	req->status = HTTP_STATUS_OK;
 	list_for_each_entry_safe(o, t, &top, list) {
 		char *etag;
 		size_t etag_len;
@@ -178,10 +233,10 @@ char *check_object(struct s3gw_request *req, int *outlen)
 		strftime(time_str, 64, "%FT%T%z", tm);
 		etag = bin2hex(o->etag, 16, &etag_len);
 		ret = asprintf(&buf, object_template,
-			       s, http_status_str(s),
+			       req->status, http_status_str(req->status),
 			       time_str, o->size, etag);
 		if (ret < 0) {
-			s = HTTP_STATUS_INTERNAL_SERVER_ERROR;
+			req->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
 			goto out_error;
 		}
 		*outlen = ret;
@@ -191,7 +246,7 @@ char *check_object(struct s3gw_request *req, int *outlen)
 
 out_error:
 	ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n",
-		       s, http_status_str(s));
+		       req->status, http_status_str(req->status));
 	if (ret > 0)
 		*outlen = ret;
 	else

@@ -71,6 +71,10 @@ void reset_request(struct s3gw_request *req)
 		req->tstamp = NULL;
 		req->region = NULL;
 	}
+	if (req->payload) {
+		free(req->payload);
+		req->payload = NULL;
+	}
 	req->next_hdr = NULL;
 	req->op = S3_OP_Unknown;
 }
@@ -131,6 +135,7 @@ size_t handle_request(struct s3gw_request *req)
 
 	setup_parser(&settings);
 
+next:
 	ret = read_request(req, buf, sizeof(buf), &nread);
 	if (ret < 0) {
 		fprintf(stderr, "Error %d reading request\n", errno);
@@ -153,6 +158,14 @@ size_t handle_request(struct s3gw_request *req)
 	if (ret < nread)
 		printf("%ld trailing bytes on input\n", nread - ret);
 
+	if (req->payload_len && !req->payload && !req->xml) {
+		size_t plen;
+		printf("reading %ld bytes of payload\n",
+		       req->payload_len);
+		req->payload = malloc(req->payload_len);
+		ret = read_request(req, req->payload, req->payload_len,
+				   &plen);
+	}
 	resp = format_response(req, &resp_len);
 	if (!resp) {
 		fprintf(stderr, "Error formatting response\n");
@@ -176,5 +189,7 @@ size_t handle_request(struct s3gw_request *req)
 	}
 	free(resp);
 
+	if (req->status == HTTP_STATUS_CONTINUE)
+		goto next;
 	return total;
 }

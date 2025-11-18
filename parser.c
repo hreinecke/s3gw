@@ -37,6 +37,13 @@ static int parse_xml(http_parser *http, const char *body, size_t len)
 
 	if (!len)
 		return 0;
+	if (req->op == S3_OP_PutObject) {
+		req->payload = malloc(len + 1);
+		memset(req->payload, 0, len + 1);
+		memcpy(req->payload, body, len);
+		printf("body:\n%s\n", req->payload);
+		return 0;
+	}
 	req->xml = xmlParseMemory(body, len);
 	if (!req->xml) {
 		fprintf(stderr, "failed to parse body\n");
@@ -202,6 +209,17 @@ int parse_header_complete(http_parser *http)
 		if (!strcmp(hdr->key, "Host")) {
 			host = hdr->value;
 			break;
+		}
+		if (!strcmp(hdr->key, "Content-Length")) {
+			int ret;
+			char *eptr;
+
+			ret = strtoul(hdr->value, &eptr, 10);
+			if (eptr != hdr->value) {
+				if (req->payload_len)
+					printf("overriding payload length\n");
+				req->payload_len = ret;
+			}
 		}
 	}
 	if (http->method == HTTP_GET) {

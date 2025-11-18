@@ -30,4 +30,7 @@ tcp.o: tcp.c s3gw.h
 request.o: request.c s3gw.h
 parser.o: parser.c s3gw.h s3_api.h http_parser.h
 format.o: format.c s3gw.h s3_api.h
+dir.o: dir.c s3gw.h s3_api.h
 bucket.o: bucket.c s3gw.h s3_api.h utils.h
+object.o: object.c s3gw.h s3_api.h utils.h
+auth.o: auth.c s3gw.h s3_api.h utils.h

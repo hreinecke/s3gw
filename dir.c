@@ -285,6 +285,64 @@ out:
 	return ret;
 }
 
+int dir_create_object(struct s3gw_request *req)
+{
+	char *pathname;
+	int ret, fd;
+
+	ret = asprintf(&pathname, "%s/%s/%s/%s",
+		       req->ctx->base_dir,
+		       req->owner,
+		       req->bucket,
+		       req->object);
+	if (ret < 0)
+		return -ENOMEM;
+
+	fd = open(pathname, O_CREAT | O_RDWR, 0644);
+	if (fd < 0) {
+		fprintf(stderr, "Cannot create object '%s', error %d\n",
+			pathname, -errno);
+		free(pathname);
+		return -errno;
+	}
+	if (req->payload) {
+		ret = write(fd, req->payload, strlen(req->payload));
+		if (ret < 0) {
+			fprintf(stderr, "Cannot write to object, error %d\n",
+				-errno);
+			ret = -errno;
+		}
+	} else
+		ret = 0;
+
+	close(fd);
+	free(pathname);
+	return ret;
+}
+
+int dir_delete_object(struct s3gw_request *req)
+{
+	char *pathname;
+	int ret;
+
+	ret = asprintf(&pathname, "%s/%s/%s/%s",
+		       req->ctx->base_dir,
+		       req->owner,
+		       req->bucket,
+		       req->object);
+	if (ret < 0)
+		return -ENOMEM;
+
+	ret = unlink(pathname);
+	if (ret < 0) {
+		fprintf(stderr, "Cannot unlink object '%s', error %d\n",
+			pathname, -errno);
+		ret = -errno;
+	}
+	free(pathname);
+	return ret;
+}
+
 int dir_find_objects(struct s3gw_request *req, struct linked_list *head,
 		     char *prefix)
 {
