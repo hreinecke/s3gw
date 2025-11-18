@@ -126,6 +126,35 @@ int dir_create_bucket(struct s3gw_request *req)
 	return ret;
 }
 
+int dir_delete_bucket(struct s3gw_request *req)
+{
+	char *pathname;
+	int ret;
+
+	if (!req->owner) {
+		fprintf(stderr, "No owner set\n");
+		return -EINVAL;
+	}
+	if (!req->bucket) {
+		fprintf(stderr, "No bucket specified\n");
+		return -EINVAL;
+	}
+	ret = asprintf(&pathname, "%s/%s/%s",
+		       req->ctx->base_dir, req->owner, req->bucket);
+	if (ret < 0)
+		return -errno;
+
+	ret = rmdir(pathname);
+	if (ret < 0) {
+		fprintf(stderr, "%s: bucket %s error %d\n",
+			__func__, pathname, errno);
+		ret = -errno;
+	}
+
+	free(pathname);
+	return ret;
+}
+
 static int find_bucket(char *dirname, char *name, struct linked_list *head)
 {
 	struct s3gw_bucket *b;

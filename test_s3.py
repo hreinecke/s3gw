@@ -33,10 +33,23 @@ for bucket in all_buckets['Buckets']:
                 Key=obj['Key'])
             print(f'Object ETag: {head["ETag"]}')
 
-resp = s3_client.create_bucket(
-    Bucket='s3gw-test-bucket-1',
-    CreateBucketConfiguration={
-        'LocationConstraint': 'eu-west-2',
+try:
+    resp = s3_client.create_bucket(
+        Bucket='s3gw-test-bucket-1',
+        CreateBucketConfiguration={
+            'LocationConstraint': 'eu-west-2',
         },
     )
+except Exception as e:
+    resp = f'{e}'
+    pass
+print(f'{resp}')
+
+try:
+    resp = s3_client.delete_bucket(
+        Bucket='s3gw-test-bucket-1'
+    )
+except Exception as e:
+    resp = f'{e}'
+    pass
 print(f'{resp}')

@@ -48,6 +48,52 @@ out_error:
 	return buf;
 }
 
+char *delete_bucket(struct s3gw_request *req, int *outlen)
+{
+	enum http_status s = HTTP_STATUS_NO_CONTENT;
+	char *buf;
+	time_t now = time(NULL);
+	struct tm *tm;
+	char time_str[64];
+	int ret;
+
+	ret = dir_delete_bucket(req);
+	if (ret < 0) {
+		switch (ret) {
+		case -EEXIST:
+			s = HTTP_STATUS_CONFLICT;
+			break;
+		case -ENOENT:
+			s = HTTP_STATUS_NOT_FOUND;
+			break;
+		default:
+			s = HTTP_STATUS_BAD_REQUEST;
+			break;
+		}
+		goto out_error;
+	}
+	tm = localtime(&now);
+	strftime(time_str, 64, "%c", tm);
+	ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n"
+		       "Date: %s\r\n"
+		       "Connection: close\r\n",
+		       s, http_status_str(s), time_str);
+	if (ret < 0)
+		buf = NULL;
+	else
+		*outlen = ret;
+	return buf;
+
+out_error:
+	ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n",
+		       s, http_status_str(s));
+	if (ret > 0)
+		*outlen = ret;
+	else
+		buf = NULL;
+	return buf;
+}
+
 char *list_buckets(struct s3gw_request *req, int *outlen)
 {
 	struct linked_list top;

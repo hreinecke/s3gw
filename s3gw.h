@@ -82,12 +82,14 @@ size_t handle_request(struct s3gw_request *req);
 int create_owner_secret(struct s3gw_ctx *ctx, char *owner_id, char *secret);
 char *get_owner_secret(struct s3gw_ctx *ctx, char *owner_id, int *out_len);
 int dir_create_bucket(struct s3gw_request *req);
+int dir_delete_bucket(struct s3gw_request *req);
 int dir_find_buckets(struct s3gw_request *req, struct linked_list *head);
 int dir_find_objects(struct s3gw_request *req, struct linked_list *head,
 		     char *prefix);
 
 /* bucket.c */
 char *create_bucket(struct s3gw_request *req, int *outlen);
+char *delete_bucket(struct s3gw_request *req, int *outlen);
 char *list_buckets(struct s3gw_request *req, int *outlen);
 char *check_bucket(struct s3gw_request *req, int *outlen);
 
