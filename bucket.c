@@ -10,42 +10,20 @@
 #include "s3_api.h"
 #include "s3gw.h"
 
-static char list_buckets_preamble[] =
-	"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n"
-	"<ListAllMyBucketsResult>\r\n"
-	"<Buckets>\r\n";
-static char list_buckets_template[] =
-	"<Bucket>\r\n"
-	"<CreationDate>%s</CreationDate>\r\n"
-	"<Name>%s</Name>\r\n"
-	"</Bucket>\r\n";
-static char list_buckets_postamble[] =
-	"</Buckets>\r\n"
-	"<Owner>\r\n<ID>%s</ID>\r\n</Owner>\r\n"
-	"</ListAllMyBucketsResult>\r\n";
-
 char *list_buckets(struct s3gw_request *req, int *outlen)
 {
 	struct linked_list top;
 	struct s3gw_bucket *b, *t;
-	char *buf;
-	size_t off = 0, total = 4096, hlen;
+	xmlDoc *doc;
+	xmlNode *root_node, *buckets_node, *b_node, *owner_node;
+	unsigned char *xml;
+	int xml_len;
+	char *hdr, *buf;
+	size_t len;
 	enum http_status s = HTTP_STATUS_OK;
+	char time_str[64];
+	struct tm *tm;
 	int ret;
-
-	buf = malloc(total);
-	if (!buf)
-		return NULL;
-	ret = snprintf(buf, total, "HTTP/1.1 %d %s\r\n"
-		       "Content-Length:     \r\n\r\n",
-		       s, http_status_str(s));
-	if (ret < 0) {
-		free(buf);
-		return NULL;
-	}
-	off += ret;
-	/* Save the header length */
-	hlen = off;
 
 	INIT_LINKED_LIST(&top);
 	ret = find_buckets(req, &top);
@@ -54,58 +32,83 @@ char *list_buckets(struct s3gw_request *req, int *outlen)
 		goto out_error;
 	}
 	printf("found %d buckets\n", ret);
-	ret = snprintf(buf + off, total - off, "%s", list_buckets_preamble);
-	if (ret < 0) {
-		s = HTTP_STATUS_INTERNAL_SERVER_ERROR;
-		goto out_error;
-	}
-	off += ret;
-	list_for_each_entry_safe(b, t, &top, list) {
-		char time_str[64];
-		struct tm *tm;
 
-		list_del(&b->list);
-		if (off >= total) {
-			fprintf(stderr, "skip bucket '%s'\n",
-				b->name);
-			free(b->name);
-			free(b);
-			continue;
-		}
+	/*
+	 * Response format:
+	 * <?xml version="1.0"?>
+	 * <ListAllMyBucketsResult>
+	 * <Buckets>
+	 * <Bucket>
+	 * <CreationDate>date</CreationDate>
+	 * <Name>name</Name>
+	 * </Bucket>
+	 * ...
+	 * </Buckets>
+	 * <Owner><ID>owner</ID></Owner>
+	 * </ListAllMyBucketsResult>
+	 */
+	doc = xmlNewDoc((const xmlChar *)"1.0");
+	root_node = xmlNewDocNode(doc, NULL,
+				  (const xmlChar *)"ListAllMyBucketsResult",
+				  NULL);
+	xmlDocSetRootElement(doc, root_node);
+
+	buckets_node = xmlNewChild(root_node, NULL,
+				   (const xmlChar *)"Buckets", NULL);
+	list_for_each_entry_safe(b, t, &top, list) {
+		list_del_init(&b->list);
+		b_node = xmlNewChild(buckets_node, NULL,
+				     (const xmlChar *)"Bucket", NULL);
 		tm = localtime(&b->ctime);
 		strftime(time_str, 64, "%FT%T%z", tm);
-		ret = snprintf(buf + off, total - off,
-			       list_buckets_template,
-			       time_str, b->name);
-		if (ret < 0)
-			fprintf(stderr, "failed to format time\n");
-		else
-			off += ret;
-		free(b->name);
-		free(b);
+		xmlNewChild(b_node, NULL,
+			    (const xmlChar *)"CreationDate",
+			    (xmlChar *)time_str);
+		xmlNewChild(b_node, NULL,
+			    (const xmlChar *)"Name", (xmlChar *)b->name);
 	}
-	if (off >= total) {
-		s = HTTP_STATUS_PAYLOAD_TOO_LARGE;
-		goto out_error;
-	}
-	ret = snprintf(buf + off, total - off,
-		       list_buckets_postamble, req->owner);
+	owner_node = xmlNewChild(root_node, NULL,
+				 (const xmlChar *)"Owner", NULL);
+	xmlNewChild(owner_node, NULL, (const xmlChar *)"ID",
+		    (xmlChar *)req->owner);
+
+	xmlDocDumpMemory(doc, &xml, &xml_len);
+	xmlFreeDoc(doc);
+
+	ret = asprintf(&hdr, "HTTP/1.1 %d %s\r\n"
+		       "Content-Length: %d\r\n",
+		       s, http_status_str(s), xml_len);
 	if (ret < 0) {
-		s = HTTP_STATUS_INTERNAL_SERVER_ERROR;
-		goto out_error;
+		free(xml);
+		return NULL;
 	}
-	off += ret;
-	/* Fixup content length */
-	ret = snprintf(buf + hlen - 8, 5, "%4lu", off - hlen);
-	buf[hlen - 8 + ret] = '\r';
-	*outlen = off;
+	len = ret + xml_len + 3;
+	buf = malloc(len);
+	if (!buf) {
+		free(xml);
+		free(hdr);
+		return NULL;
+	}
+
+	ret = sprintf(buf, "%s\r\n%s", hdr, xml);
+	if (ret > 0)
+		*outlen = ret;
+	else {
+		free(buf);
+		buf = NULL;
+	}
+	free(xml);
+	free(hdr);
 	return buf;
 
 out_error:
-	memset(buf, 0, off);
-	ret = sprintf(buf, "HTTP/1.1 %d %s\r\n",
-		      s, http_status_str(s));
-	*outlen = strlen(buf);
+	ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n",
+		       s, http_status_str(s));
+	if (ret > 0) {
+		*outlen = ret;
+	} else {
+		buf = NULL;
+	}
 	return buf;
 }
 
