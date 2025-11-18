@@ -57,7 +57,7 @@ struct s3gw_request {
 	SSL *ssl;
 	http_parser http;
 	xmlDoc *xml;
-	char *payload;
+	unsigned char *payload;
 	size_t payload_len;
 	enum http_status status;
 	enum s3_api_ops op;
@@ -87,7 +87,7 @@ char *get_owner_secret(struct s3gw_ctx *ctx, char *owner_id, int *out_len);
 int dir_create_bucket(struct s3gw_request *req);
 int dir_delete_bucket(struct s3gw_request *req);
 int dir_find_buckets(struct s3gw_request *req, struct linked_list *head);
-int dir_create_object(struct s3gw_request *req);
+int dir_create_object(struct s3gw_request *req, struct s3gw_object *obj);
 int dir_delete_object(struct s3gw_request *req);
 int dir_find_objects(struct s3gw_request *req, struct linked_list *head,
 		     char *prefix);

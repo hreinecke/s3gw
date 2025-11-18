@@ -229,9 +229,9 @@ int dir_find_buckets(struct s3gw_request *req, struct linked_list *head)
 	return num;
 }
 
-static int find_object(char *dirname, char *name, struct linked_list *head)
+static int fill_object(struct s3gw_object *obj, char *dirname, char *name,
+		       unsigned char *payload, size_t payload_len)
 {
-	struct s3gw_object *o;
 	char *pathname;
 	unsigned char *etag;
 	struct stat st;
@@ -242,7 +242,10 @@ static int find_object(char *dirname, char *name, struct linked_list *head)
 	if (ret < 0)
 		return -errno;
 
-	fd = open(pathname, O_RDONLY);
+	if (payload)
+		fd = open(pathname, O_RDWR | O_CREAT, 0644);
+	else
+		fd = open(pathname, O_RDONLY);
 	if (fd < 0) {
 		fprintf(stderr, "%s: object %s open error %d\n",
 			__func__, pathname, errno);
@@ -257,13 +260,22 @@ static int find_object(char *dirname, char *name, struct linked_list *head)
 		ret = -errno;
 		goto out;
 	}
+	if (payload && payload_len) {
+		ret = write(fd, payload, payload_len);
+		if (ret < 0) {
+			fprintf(stderr, "%s: object %s write error %d\n",
+				__func__, pathname, errno);
+			close(fd);
+			ret = -errno;
+			goto out;
+		}
+	}
 	addr = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+	close(fd);
 	if (addr == MAP_FAILED) {
-		close(fd);
 		ret = -EIO;
 		goto out;
 	}
-	close(fd);
 	etag = md5sum(addr, st.st_size, &etag_len);
 	munmap(addr, st.st_size);
 
@@ -271,55 +283,38 @@ static int find_object(char *dirname, char *name, struct linked_list *head)
 		fprintf(stderr, "md5sum calculation failed\n");
 		etag_len = 0;
 	}
-	o = malloc(sizeof(*o));
-	if (!o) {
-		ret = -ENOMEM;
-		goto out;
-	}
-	o->key = strdup(name);
-	o->mtime = st.st_mtime;
-	o->size = st.st_size;
-	o->etag = etag;
-	o->etag_len = etag_len;
-	list_add(&o->list, head);
-	printf("Found object '%s'\n", o->key);
+	obj->key = strdup(name);
+	obj->mtime = st.st_mtime;
+	obj->size = st.st_size;
+	obj->etag = etag;
+	obj->etag_len = etag_len;
+
+	printf("Found object '%s'\n", obj->key);
 out:		
 	free(pathname);
 	return ret;
 }
 
-int dir_create_object(struct s3gw_request *req)
+int dir_create_object(struct s3gw_request *req, struct s3gw_object *obj)
 {
-	char *pathname;
+	char *dirname;
 	int ret, fd;
 
-	ret = asprintf(&pathname, "%s/%s/%s/%s",
+	ret = asprintf(&dirname, "%s/%s/%s",
 		       req->ctx->base_dir,
 		       req->owner,
-		       req->bucket,
-		       req->object);
+		       req->bucket);
 	if (ret < 0)
 		return -ENOMEM;
 
-	fd = open(pathname, O_CREAT | O_RDWR, 0644);
-	if (fd < 0) {
+	ret = fill_object(obj, dirname, req->object,
+			  req->payload, req->payload_len);
+	if (ret < 0) {
 		fprintf(stderr, "Cannot create object '%s', error %d\n",
-			pathname, -errno);
-		free(pathname);
-		return -errno;
+			req->object, -errno);
+		ret = -errno;
 	}
-	if (req->payload) {
-		ret = write(fd, req->payload, strlen(req->payload));
-		if (ret < 0) {
-			fprintf(stderr, "Cannot write to object, error %d\n",
-				-errno);
-			ret = -errno;
-		}
-	} else
-		ret = 0;
-
-	close(fd);
-	free(pathname);
+	free(dirname);
 	return ret;
 }
 
@@ -350,6 +345,7 @@ int dir_find_objects(struct s3gw_request *req, struct linked_list *head,
 		     char *prefix)
 {
 	char *dirname;
+	struct s3gw_object *obj = NULL;
 	int ret, num = 0;
 	struct dirent *se;
 	DIR *sd;
@@ -379,9 +375,16 @@ int dir_find_objects(struct s3gw_request *req, struct linked_list *head,
 			if (prefix && strncmp(se->d_name, prefix,
 					      strlen(prefix)))
 				continue;
-			ret = find_object(dirname, se->d_name, head);
-			if (ret < 0)
-				break;
+			if (!obj) {
+				obj = malloc(sizeof(*obj));
+				if (!obj)
+					break;
+			}
+			ret = fill_object(obj, dirname, se->d_name, NULL, 0);
+			if (!ret) {
+				list_add(&obj->list, head);
+				obj = NULL;
+			}
 			num++;
 		}
 	}

@@ -163,8 +163,8 @@ next:
 		printf("reading %ld bytes of payload\n",
 		       req->payload_len);
 		req->payload = malloc(req->payload_len);
-		ret = read_request(req, req->payload, req->payload_len,
-				   &plen);
+		ret = read_request(req, (char *)req->payload,
+				   req->payload_len, &plen);
 	}
 	resp = format_response(req, &resp_len);
 	if (!resp) {

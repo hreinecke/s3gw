@@ -18,10 +18,11 @@ static xmlChar xmlns[] =
 
 char *create_object(struct s3gw_request *req, int *outlen)
 {
+	struct s3gw_object obj;
 	char *buf;
 	int ret;
 
-	ret = dir_create_object(req);
+	ret = dir_create_object(req, &obj);
 	if (ret < 0) {
 		switch (ret) {
 		case -EEXIST:
