@@ -242,15 +242,18 @@ static int find_object(char *dirname, char *name, struct linked_list *head)
 	if (ret < 0)
 		return -errno;
 
-	ret = lstat(pathname, &st);
-	if (ret < 0) {
-		fprintf(stderr, "%s: bucket %s error %d\n",
+	fd = open(pathname, O_RDONLY);
+	if (fd < 0) {
+		fprintf(stderr, "%s: object %s open error %d\n",
 			__func__, pathname, errno);
 		ret = -errno;
 		goto out;
 	}
-	fd = open(pathname, O_RDONLY);
-	if (fd < 0) {
+	ret = fstat(fd, &st);
+	if (ret < 0) {
+		fprintf(stderr, "%s: object %s stat error %d\n",
+			__func__, pathname, errno);
+		close(fd);
 		ret = -errno;
 		goto out;
 	}
