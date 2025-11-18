@@ -10,6 +10,44 @@
 #include "s3_api.h"
 #include "s3gw.h"
 
+char *create_bucket(struct s3gw_request *req, int *outlen)
+{
+	enum http_status s = HTTP_STATUS_OK;
+	char *buf;
+	int ret;
+
+	/* XXX: Need to check location constraint here */
+	ret = dir_create_bucket(req);
+	if (ret < 0) {
+		s = HTTP_STATUS_BAD_REQUEST;
+		if (ret == -EEXIST) {
+			s = HTTP_STATUS_CONFLICT;
+		}
+		goto out_error;
+	}
+	ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n"
+		       "x-amz-bucket-region: %s\r\n"
+		       "Location: /%s\r\n"
+		       "Content-Length: 0\r\n"
+		       "Connection: close\r\n",
+		       s, http_status_str(s),
+		       req->region, req->bucket);
+	if (ret < 0)
+		buf = NULL;
+	else
+		*outlen = ret;
+	return buf;
+
+out_error:
+	ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n",
+		       s, http_status_str(s));
+	if (ret > 0)
+		*outlen = ret;
+	else
+		buf = NULL;
+	return buf;
+}
+
 char *list_buckets(struct s3gw_request *req, int *outlen)
 {
 	struct linked_list top;
@@ -26,7 +64,7 @@ char *list_buckets(struct s3gw_request *req, int *outlen)
 	int ret;
 
 	INIT_LINKED_LIST(&top);
-	ret = find_buckets(req, &top);
+	ret = dir_find_buckets(req, &top);
 	if (ret < 0 && ret != -EPERM) {
 		s = HTTP_STATUS_NOT_FOUND;
 		goto out_error;
@@ -120,7 +158,7 @@ char *check_bucket(struct s3gw_request *req, int *outlen)
 	int ret;
 
 	INIT_LINKED_LIST(&top);
-	ret = find_buckets(req, &top);
+	ret = dir_find_buckets(req, &top);
 	if (ret < 0) {
 		if (ret == -EPERM)
 			s = HTTP_STATUS_FORBIDDEN;

@@ -60,7 +60,7 @@ char *list_objects(struct s3gw_request *req, int *outlen)
 		    (const xmlChar *)"false");
 	     
 	INIT_LINKED_LIST(&top);
-	num = find_objects(req, &top, prefix);
+	num = dir_find_objects(req, &top, prefix);
 	if (num < 0) {
 		if (num != -EPERM) {
 			ret = num;
@@ -157,7 +157,7 @@ char *check_object(struct s3gw_request *req, int *outlen)
 	int ret;
 
 	INIT_LINKED_LIST(&top);
-	ret = find_objects(req, &top, NULL);
+	ret = dir_find_objects(req, &top, NULL);
 	if (ret < 0) {
 		if (ret == -EPERM)
 			s = HTTP_STATUS_FORBIDDEN;
@@ -197,4 +197,16 @@ out_error:
 	else
 		buf = NULL;
 	return buf;
+}
+
+void clear_object(struct s3gw_object *obj)
+{
+	if (obj->key) {
+		free(obj->key);
+		obj->key = NULL;
+	}
+	if (obj->etag) {
+		free(obj->etag);
+		obj->etag = NULL;
+	}
 }

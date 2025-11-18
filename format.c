@@ -42,6 +42,9 @@ char *format_response(struct s3gw_request *req, int *outlen)
 	}
 
 	switch (req->op) {
+	case S3_OP_CreateBucket:
+		buf = create_bucket(req, outlen);
+		break;
 	case S3_OP_ListBuckets:
 		buf = list_buckets(req, outlen);
 		break;

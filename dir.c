@@ -97,6 +97,35 @@ char *get_owner_secret(struct s3gw_ctx *ctx, char *owner_id, int *out_len)
 	return value;
 }
 
+int dir_create_bucket(struct s3gw_request *req)
+{
+	char *pathname;
+	int ret;
+
+	if (!req->owner) {
+		fprintf(stderr, "No owner set\n");
+		return -EINVAL;
+	}
+	if (!req->bucket) {
+		fprintf(stderr, "No bucket specified\n");
+		return -EINVAL;
+	}
+	ret = asprintf(&pathname, "%s/%s/%s",
+		       req->ctx->base_dir, req->owner, req->bucket);
+	if (ret < 0)
+		return -errno;
+
+	ret = mkdir(pathname, 0755);
+	if (ret < 0) {
+		fprintf(stderr, "%s: bucket %s error %d\n",
+			__func__, pathname, errno);
+		ret = -errno;
+	}
+
+	free(pathname);
+	return ret;
+}
+
 static int find_bucket(char *dirname, char *name, struct linked_list *head)
 {
 	struct s3gw_bucket *b;
@@ -129,7 +158,7 @@ out:
 	return ret;
 }
 
-int find_buckets(struct s3gw_request *req, struct linked_list *head)
+int dir_find_buckets(struct s3gw_request *req, struct linked_list *head)
 {
 	char *dirname;
 	int ret, num = 0;
@@ -227,20 +256,8 @@ out:
 	return ret;
 }
 
-void clear_object(struct s3gw_object *obj)
-{
-	if (obj->key) {
-		free(obj->key);
-		obj->key = NULL;
-	}
-	if (obj->etag) {
-		free(obj->etag);
-		obj->etag = NULL;
-	}
-}
-
-int find_objects(struct s3gw_request *req, struct linked_list *head,
-		 char *prefix)
+int dir_find_objects(struct s3gw_request *req, struct linked_list *head,
+		     char *prefix)
 {
 	char *dirname;
 	int ret, num = 0;
