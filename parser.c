@@ -32,6 +32,8 @@ static int parse_xml(http_parser *http, const char *body, size_t len)
 {
 	struct s3gw_request *req = http->data;
 	xmlNode *root;
+	unsigned char *out;
+	int out_len;
 
 	if (!len)
 		return 0;
@@ -42,6 +44,9 @@ static int parse_xml(http_parser *http, const char *body, size_t len)
 	}
 	root = xmlDocGetRootElement(req->xml);
 	print_xml(root);
+	xmlDocDumpMemory(req->xml, &out, &out_len);
+	printf("%s", out);
+	free(out);
 	return 0;
 }
 
