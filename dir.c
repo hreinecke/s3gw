@@ -235,7 +235,6 @@ static int fill_object(struct s3gw_object *obj, char *dirname, char *name,
 	char *pathname;
 	unsigned char *etag;
 	struct stat st;
-	void *addr;
 	int fd, ret, etag_len;
 
 	ret = asprintf(&pathname, "%s/%s", dirname, name);
@@ -252,6 +251,23 @@ static int fill_object(struct s3gw_object *obj, char *dirname, char *name,
 		ret = -errno;
 		goto out;
 	}
+	if (payload && payload_len) {
+		size_t off = 0;
+
+		while (off < payload_len) {
+			ret = write(fd, payload + off, payload_len - off);
+			if (ret <= 0)
+				break;
+			off += ret;
+		}
+		if (ret <= 0) {
+			fprintf(stderr, "%s: object %s write error %d\n",
+				__func__, pathname, errno);
+			close(fd);
+			ret = -errno;
+			goto out;
+		}
+	}
 	ret = fstat(fd, &st);
 	if (ret < 0) {
 		fprintf(stderr, "%s: object %s stat error %d\n",
@@ -260,24 +276,16 @@ static int fill_object(struct s3gw_object *obj, char *dirname, char *name,
 		ret = -errno;
 		goto out;
 	}
-	if (payload && payload_len) {
-		ret = write(fd, payload, payload_len);
-		if (ret < 0) {
-			fprintf(stderr, "%s: object %s write error %d\n",
-				__func__, pathname, errno);
-			close(fd);
-			ret = -errno;
-			goto out;
-		}
-	}
-	addr = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+	obj->size = st.st_size;
+	obj->map = mmap(NULL, obj->size, PROT_READ, MAP_PRIVATE, fd, 0);
 	close(fd);
-	if (addr == MAP_FAILED) {
+	if (obj->map == MAP_FAILED) {
+		fprintf(stderr, "%s: object %s map error\n",
+			__func__, pathname);
 		ret = -EIO;
 		goto out;
 	}
-	etag = md5sum(addr, st.st_size, &etag_len);
-	munmap(addr, st.st_size);
+	etag = md5sum(obj->map, st.st_size, &etag_len);
 
 	if (!etag) {
 		fprintf(stderr, "md5sum calculation failed\n");
@@ -295,7 +303,7 @@ out:
 	return ret;
 }
 
-int dir_create_object(struct s3gw_request *req, struct s3gw_object *obj)
+int dir_fetch_object(struct s3gw_request *req, struct s3gw_object *obj)
 {
 	char *dirname;
 	int ret;
@@ -310,8 +318,8 @@ int dir_create_object(struct s3gw_request *req, struct s3gw_object *obj)
 	ret = fill_object(obj, dirname, req->object,
 			  req->payload, req->payload_len);
 	if (ret < 0) {
-		fprintf(stderr, "Cannot create object '%s', error %d\n",
-			req->object, -errno);
+		fprintf(stderr, "Cannot %s object '%s', error %d\n",
+			req->payload ? "create" : "read", req->object, -errno);
 		ret = -errno;
 	}
 	free(dirname);

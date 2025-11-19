@@ -171,7 +171,8 @@ next:
 		fprintf(stderr, "Error formatting response\n");
 		return 0;
 	}
-	printf("Response (len %d):\n%s\n", resp_len, resp);
+	printf("Response (len %d + %lu):\n%s\n",
+	       resp_len, req->obj ? req->obj->size : 0, resp);
 	while (total < resp_len) {
 		ret = write_request(req, resp + total, resp_len - total,
 				    &nwritten);
@@ -186,6 +187,18 @@ next:
 			break;
 		}
 		total += nwritten;
+	}
+	if (req->obj) {
+		size_t off = 0;
+
+		while (off < req->obj->size) {
+			ret = write_request(req, req->obj->map + off,
+					    req->obj->size - off, &nwritten);
+			if (ret > 0) {
+				off += nwritten;
+				total += nwritten;
+			}
+		}
 	}
 	free(resp);
 

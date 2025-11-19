@@ -63,8 +63,11 @@ char *format_response(struct s3gw_request *req, int *outlen)
 	case S3_OP_ListObjects:
 		buf = list_objects(req, outlen);
 		break;
+	case S3_OP_GetObject:
+		buf = get_object(req, outlen);
+		break;
 	case S3_OP_HeadObject:
-		buf = check_object(req, outlen);
+		buf = get_object(req, outlen);
 		break;
 	default:
 		fprintf(stderr, "Invalid op %d\n", req->op);

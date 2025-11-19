@@ -23,7 +23,7 @@ char *create_object(struct s3gw_request *req, int *outlen)
 
 	memset(&obj, 0, sizeof(obj));
 	req->status = HTTP_STATUS_OK;
-	ret = dir_create_object(req, &obj);
+	ret = dir_fetch_object(req, &obj);
 	if (ret < 0) {
 		switch (ret) {
 		case -EEXIST:
@@ -172,6 +172,7 @@ char *list_objects(struct s3gw_request *req, int *outlen)
 
 static char object_template[]=
 	"HTTP/1.1 %d %s\r\n"
+	"Date: %s\r\n"
 	"Last-Modified: %s\r\n"
 	"Content-Length: %lu\r\n"
 	"ETag: %s\r\n"
@@ -179,55 +180,77 @@ static char object_template[]=
 	"Connection: close\r\n"
 	"Server: s3gw\r\n";
 
-char *check_object(struct s3gw_request *req, int *outlen)
+char *get_object(struct s3gw_request *req, int *outlen)
 {
-	struct linked_list top;
 	struct s3gw_object *obj;
-	char time_str[64];
+	char cur_time_str[64], mod_time_str[64];
+	time_t now = time(NULL);
 	struct tm *tm;
 	char *buf;
 	int ret;
 	char *etag;
 	size_t etag_len;
 
-	INIT_LINKED_LIST(&top);
-	ret = dir_find_objects(req, &top, NULL);
+	obj = malloc(sizeof(*obj));
+	if (!obj) {
+		req->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
+		return NULL;
+	}
+	ret = dir_fetch_object(req, obj);
 	if (ret < 0) {
 		if (ret == -EPERM)
 			req->status = HTTP_STATUS_FORBIDDEN;
 		else
 			req->status = HTTP_STATUS_NOT_FOUND;
-		return NULL;
-	}
-	if (ret > 1) {
-		req->status = HTTP_STATUS_CONFLICT;
-		return NULL;
+		goto out_free_obj;
 	}
 	req->status = HTTP_STATUS_OK;
-	obj = list_first_entry(&top, struct s3gw_object, list);
-	list_del(&obj->list);
+
 	tm = localtime(&obj->mtime);
-	strftime(time_str, 64, "%FT%T%z", tm);
+	strftime(mod_time_str, 64, "%FT%T%z", tm);
+	tm = localtime(&now);
+	strftime(cur_time_str, 64, "%FT%T%z", tm);
 	etag = bin2hex(obj->etag, 16, &etag_len);
 	if (!etag) {
 		req->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
-		return NULL;
+		goto out_free_obj;
 	}
 	ret = asprintf(&buf, object_template,
 		       req->status, http_status_str(req->status),
-		       time_str, obj->size, etag);
-	if (ret > 0)
+		       cur_time_str, mod_time_str, obj->size, etag);
+	if (ret > 0) {
+		if (req->op == S3_OP_GetObject) {
+			req->obj = obj;
+			obj = NULL;
+		}
 		*outlen = ret;
-	else {
+	} else {
 		req->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
 		buf = NULL;
 	}
 	free(etag);
+out_free_obj:
+	if (obj) {
+		clear_object(obj);
+		free(obj);
+	}
 	return buf;
+}
+
+void reset_object(struct s3gw_object *obj)
+{
+	memset(obj, 0, sizeof(*obj));
+	INIT_LINKED_LIST(&obj->list);
 }
 
 void clear_object(struct s3gw_object *obj)
 {
+	if (obj->map) {
+		munmap(obj->map, obj->size);
+		obj->map =  NULL;
+		obj->size = 0;
+	}
+
 	if (obj->key) {
 		free(obj->key);
 		obj->key = NULL;
@@ -235,5 +258,7 @@ void clear_object(struct s3gw_object *obj)
 	if (obj->etag) {
 		free(obj->etag);
 		obj->etag = NULL;
+		obj->etag_len = 0;
 	}
+	obj->bucket = NULL;
 }

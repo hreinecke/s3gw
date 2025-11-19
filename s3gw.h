@@ -39,6 +39,7 @@ struct s3gw_object {
 	struct linked_list list;
 	struct s3gw_bucket *bucket;
 	char *key;
+	void *map;
 	size_t size;
 	unsigned char *etag;
 	size_t etag_len;
@@ -59,6 +60,7 @@ struct s3gw_request {
 	xmlDoc *xml;
 	unsigned char *payload;
 	size_t payload_len;
+	struct s3gw_object *obj;
 	enum http_status status;
 	enum s3_api_ops op;
 	struct linked_list hdr_list;
@@ -87,7 +89,7 @@ char *get_owner_secret(struct s3gw_ctx *ctx, char *owner_id, int *out_len);
 int dir_create_bucket(struct s3gw_request *req);
 int dir_delete_bucket(struct s3gw_request *req);
 int dir_find_buckets(struct s3gw_request *req, struct linked_list *head);
-int dir_create_object(struct s3gw_request *req, struct s3gw_object *obj);
+int dir_fetch_object(struct s3gw_request *req, struct s3gw_object *obj);
 int dir_delete_object(struct s3gw_request *req);
 int dir_find_objects(struct s3gw_request *req, struct linked_list *head,
 		     char *prefix);
@@ -102,7 +104,7 @@ char *check_bucket(struct s3gw_request *req, int *outlen);
 char *create_object(struct s3gw_request *req, int *outlen);
 char *delete_object(struct s3gw_request *req, int *outlen);
 char *list_objects(struct s3gw_request *req, int *outlen);
-char *check_object(struct s3gw_request *req, int *outlen);
+char *get_object(struct s3gw_request *req, int *outlen);
 void clear_object(struct s3gw_object *obj);
 
 /* format.c */

@@ -60,6 +60,19 @@ except Exception as e:
     pass
 print(f'{resp}')
 
+with open('server-cert.pem') as fd:
+    data = fd.read()
+
+try:
+    resp = s3_client.get_object(
+        Bucket='s3gw-test-bucket-1',
+        Key='server-cert.pem',
+        )
+except Exception as e:
+    resp = f'{e}'
+    pass
+print(f'{resp}')
+
 try:
     resp = s3_client.delete_object(
         Bucket='s3gw-test-bucket-1',
