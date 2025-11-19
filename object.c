@@ -392,15 +392,26 @@ out_free_obj:
 	return buf;
 }
 
+static char copy_object_template[]=
+	"HTTP/1.1 %d %s\r\n"
+	"Date: %s\r\n"
+	"Content-Length: %lu\r\n"
+	"Connection: close\r\n"
+	"Server: s3gw\r\n\r\n%s";
+
 char *copy_object(struct s3gw_request *req, const char *source, int *outlen)
 {
 	struct s3gw_object *obj;
 	char *bucket, *b, *o, *e, *save;
 	char cur_time_str[64], mod_time_str[64];
 	time_t now = time(NULL);
+	xmlDoc *doc;
+	xmlNs *ns;
+	xmlNode *root;
+	xmlChar *xml;
 	struct tm *tm;
 	char *buf;
-	int ret;
+	int ret, xml_len;
 	char *etag;
 	size_t etag_len;
 
@@ -454,20 +465,31 @@ char *copy_object(struct s3gw_request *req, const char *source, int *outlen)
 		req->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
 		goto out_free_obj;
 	}
-	ret = asprintf(&buf, object_template,
+
+	doc = xmlNewDoc((const xmlChar *)"1.0");
+	root = xmlNewDocNode(doc, NULL,
+			     (const xmlChar *)"CopyObjectResult", NULL);
+	ns = xmlNewNs(root, xmlns, NULL);
+	xmlSetNs(root, ns);
+	xmlDocSetRootElement(doc, root);
+	xmlNewChild(root, NULL, (const xmlChar *)"LastModified",
+		    (xmlChar *)mod_time_str);
+	etag = bin2hex(obj->etag, 16, &etag_len);
+	xmlNewChild(root, NULL, (const xmlChar *)"ETag",
+		    (xmlChar *)etag);
+	free(etag);
+	xmlDocDumpMemory(doc, &xml, &xml_len);
+	xmlFreeDoc(doc);
+
+	ret = asprintf(&buf, copy_object_template,
 		       req->status, http_status_str(req->status),
-		       cur_time_str, mod_time_str, obj->size, etag);
-	if (ret > 0) {
-		if (req->op == S3_OP_GetObject) {
-			req->obj = obj;
-			obj = NULL;
-		}
+		       cur_time_str, xml_len, xml);
+	if (ret > 0)
 		*outlen = ret;
-	} else {
+	else {
 		req->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
 		buf = NULL;
 	}
-	free(etag);
 out_free_obj:
 	clear_object(obj);
 	free(obj);
