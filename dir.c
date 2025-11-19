@@ -379,6 +379,7 @@ int dir_find_objects(struct s3gw_request *req, struct linked_list *head,
 				obj = malloc(sizeof(*obj));
 				if (!obj)
 					break;
+				memset(obj, 0, sizeof(*obj));
 			}
 			ret = fill_object(obj, dirname, se->d_name, NULL, 0);
 			if (!ret) {

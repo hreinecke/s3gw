@@ -21,6 +21,7 @@ char *create_object(struct s3gw_request *req, int *outlen)
 	struct s3gw_object obj;
 	int ret;
 
+	memset(&obj, 0, sizeof(obj));
 	req->status = HTTP_STATUS_OK;
 	ret = dir_create_object(req, &obj);
 	if (ret < 0) {
