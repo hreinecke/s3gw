@@ -74,9 +74,15 @@ except Exception as e:
 print(f'{resp}')
 
 try:
-    resp = s3_client.delete_object(
+    resp = s3_client.delete_objects(
         Bucket='s3gw-test-bucket-1',
-        Key='server-cert.pem'
+        Delete={
+            'Objects': [
+                {
+                    'Key':'server-cert.pem',
+                }
+            ]
+            }
         )
 except Exception as e:
     resp = f'{e}'

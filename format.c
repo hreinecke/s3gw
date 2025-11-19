@@ -60,6 +60,9 @@ char *format_response(struct s3gw_request *req, int *outlen)
 	case S3_OP_DeleteObject:
 		buf = delete_object(req, outlen);
 		break;
+	case S3_OP_DeleteObjects:
+		buf = delete_objects(req, outlen);
+		break;
 	case S3_OP_ListObjects:
 		buf = list_objects(req, outlen);
 		break;

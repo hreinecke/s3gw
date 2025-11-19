@@ -20,25 +20,25 @@ enum s3_api_ops {
 	S3_OP_ListBuckets,
 	S3_OP_ListObjects,
 	S3_OP_ListObjectsV2,
-	S3_OP_ListMultipartUploads,
+	S3_OP_ListMultipartUploads, /* NI */
 	S3_OP_DeleteBucket,
-	S3_OP_PutBucketPolicy,
-	S3_OP_GetBucketPolicy,
-	S3_OP_DeleteBucketPolicy,
-	S3_OP_GetBucketPolicyStatus,
+	S3_OP_PutBucketPolicy, /* NI */
+	S3_OP_GetBucketPolicy, /* NI */
+	S3_OP_DeleteBucketPolicy, /* NI */
+	S3_OP_GetBucketPolicyStatus, /* NI */
 	S3_OP_PutObject,
-	S3_OP_CopyObject,
-	S3_OP_RestoreObject,
+	S3_OP_CopyObject, /* NI */
+	S3_OP_RestoreObject, /* NI */
 	S3_OP_GetObject,
 	S3_OP_HeadObject,
 	S3_OP_DeleteObject,
 	S3_OP_DeleteObjects,
-	S3_OP_CreateMultipartUpload,
-	S3_OP_CompleteMultipartUpload,
-	S3_OP_AbortMultipartUpload,
-	S3_OP_UploadPart,
-	S3_OP_UploadPartCopy,
-	S3_OP_ListParts,
+	S3_OP_CreateMultipartUpload, /* NI */
+	S3_OP_CompleteMultipartUpload, /* NI */
+	S3_OP_AbortMultipartUpload, /* NI */
+	S3_OP_UploadPart, /* NI */
+	S3_OP_UploadPartCopy, /* NI */
+	S3_OP_ListParts, /* NI */
 };
 
 enum s3_csum_algo {

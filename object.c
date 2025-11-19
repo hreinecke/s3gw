@@ -23,7 +23,7 @@ char *create_object(struct s3gw_request *req, int *outlen)
 
 	memset(&obj, 0, sizeof(obj));
 	req->status = HTTP_STATUS_OK;
-	ret = dir_fetch_object(req, &obj);
+	ret = dir_fetch_object(req, &obj, req->object);
 	if (ret < 0) {
 		switch (ret) {
 		case -EEXIST:
@@ -43,7 +43,7 @@ char *delete_object(struct s3gw_request *req, int *outlen)
 	int ret;
 
 	req->status = HTTP_STATUS_NO_CONTENT;
-	ret = dir_delete_object(req);
+	ret = dir_delete_object(req, req->object);
 	if (ret < 0) {
 		switch (ret) {
 		case -EEXIST:
@@ -55,6 +55,160 @@ char *delete_object(struct s3gw_request *req, int *outlen)
 		}
 	}
 	return NULL;
+}
+
+void traverse_xml(struct s3gw_request *req, xmlNode *node,
+		  struct s3gw_object *obj,
+		  size_t offset, struct linked_list *top)
+{
+	xmlNode *cur = NULL;
+	char *p, *eptr, *key;
+	unsigned long size;
+	size_t etag_len;
+	unsigned char *etag;
+	int ret;
+
+	for (cur = node; cur; cur = cur->next) {
+		if (cur->type == XML_ELEMENT_NODE) {
+			key = (char *)cur->name;
+			if (!strcmp(key, "Object")) {
+				obj = malloc(sizeof(*obj));
+				if (!obj)
+					return;
+				list_add(&obj->list, top);
+			} else if (!strcmp(key, "Key")) {
+				offset = offsetof(struct s3gw_object, key);
+			} else if (!strcmp(key, "ETag")) {
+				offset = offsetof(struct s3gw_object, etag);
+			} else if (!strcmp(key, "Size")) {
+				offset = offsetof(struct s3gw_object, size);
+			}
+			goto next_child;
+		}
+		if (cur->type == XML_TEXT_NODE) {
+			if (!obj) {
+				printf("No object during traversal\n");
+				goto next_child;
+			}
+			p = (char *)cur->content;
+			switch (offset) {
+			case offsetof(struct s3gw_object, key):
+				ret = dir_fetch_object(req, obj, p);
+				if (ret < 0)
+					obj->error = ret;
+				break;
+			case offsetof(struct s3gw_object, etag):
+				etag = hex2bin(p, &etag_len);
+				if (!obj->etag) {
+					fprintf(stderr,
+						"object '%s' no etag\n",
+						obj->key);
+				} else if (memcmp(etag, obj->etag,
+						  etag_len)) {
+					fprintf(stderr,
+						"object '%s' etag mismatch\n",
+						obj->key);
+					obj->error = -ENOKEY;
+				}
+				break;
+			case offsetof(struct s3gw_object, size):
+				size = strtoul(p, &eptr, 10);
+				if (p == eptr)
+					size = 0;
+				if (size != obj->size) {
+					fprintf(stderr,
+						"object '%s' size mismatch\n",
+						obj->key);
+					obj->error = -EFBIG;
+				}
+				break;
+			}
+		}
+	next_child:
+		traverse_xml(req, cur->children, obj, offset, top);
+	}
+}
+
+char *delete_objects(struct s3gw_request *req, int *outlen)
+{
+	struct linked_list top;
+	struct s3gw_object *obj, *tmp;
+	xmlDoc *doc;
+	xmlNs *ns;
+	xmlNode *root, *node;
+	xmlChar *xml;
+	char *buf;
+	int xml_len, ret;
+
+	INIT_LINKED_LIST(&top);
+	root = xmlDocGetRootElement(req->xml);
+	traverse_xml(req, root, NULL, 0, &top);
+	xmlFreeDoc(req->xml);
+	req->xml = NULL;
+
+	doc = xmlNewDoc((const xmlChar *)"1.0");
+	root = xmlNewDocNode(doc, NULL,
+			     (const xmlChar *)"DeleteResult", NULL);
+	ns = xmlNewNs(root, xmlns, NULL);
+	xmlSetNs(root, ns);
+	xmlDocSetRootElement(doc, root);
+	list_for_each_entry_safe(obj, tmp, &top, list) {
+		if (obj->error)
+			continue;
+		ret = dir_delete_object(req, obj->key);
+		if (ret < 0) {
+			obj->error = ret;
+			continue;
+		}
+		list_del_init(&obj->list);
+		node = xmlNewChild(root, NULL,
+				   (const xmlChar *)"Deleted", NULL);
+		xmlNewChild(node, NULL,
+			    (const xmlChar *)"Key", (xmlChar *)obj->key);
+		clear_object(obj);
+		free(obj);
+	}
+	list_for_each_entry_safe(obj, tmp, &top, list) {
+		xmlChar *code, *desc;
+
+		list_del_init(&obj->list);
+		node = xmlNewChild(root, NULL,
+				   (const xmlChar *)"Error", NULL);
+		xmlNewChild(node, NULL,
+			    (const xmlChar *)"Key", (xmlChar *)obj->key);
+		switch (obj->error) {
+		case -EPERM:
+			code = (xmlChar *)"AccessDenied";
+			desc = (xmlChar *)"Access Denied";
+			break;
+		case -ENOENT:
+			code = (xmlChar *)"NoSuchKey";
+			desc = (xmlChar *)"The specified key does not exist";
+			break;
+		default:
+			code = (xmlChar *)"InternalError";
+			desc = (xmlChar *)"We encountered an internal error. Please try again.";
+			break;
+		}
+		xmlNewChild(node, NULL, code, desc);
+		clear_object(obj);
+		free(obj);
+	}
+	xmlDocDumpMemory(doc, &xml, &xml_len);
+	xmlFreeDoc(doc);
+	req->status = HTTP_STATUS_OK;
+
+	ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n"
+		       "Content-Length: %d\r\n\r\n%s",
+		       req->status, http_status_str(req->status),
+		       xml_len, xml);
+	if (ret > 0)
+		*outlen = ret;
+	else
+		buf = NULL;
+
+	free(xml);
+	return buf;
 }
 
 char *list_objects(struct s3gw_request *req, int *outlen)
@@ -196,7 +350,7 @@ char *get_object(struct s3gw_request *req, int *outlen)
 		req->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
 		return NULL;
 	}
-	ret = dir_fetch_object(req, obj);
+	ret = dir_fetch_object(req, obj, req->object);
 	if (ret < 0) {
 		if (ret == -EPERM)
 			req->status = HTTP_STATUS_FORBIDDEN;

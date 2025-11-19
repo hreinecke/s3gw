@@ -303,7 +303,8 @@ out:
 	return ret;
 }
 
-int dir_fetch_object(struct s3gw_request *req, struct s3gw_object *obj)
+int dir_fetch_object(struct s3gw_request *req, struct s3gw_object *obj,
+		     char *object)
 {
 	char *dirname;
 	int ret;
@@ -315,18 +316,17 @@ int dir_fetch_object(struct s3gw_request *req, struct s3gw_object *obj)
 	if (ret < 0)
 		return -ENOMEM;
 
-	ret = fill_object(obj, dirname, req->object,
+	ret = fill_object(obj, dirname, object,
 			  req->payload, req->payload_len);
 	if (ret < 0) {
 		fprintf(stderr, "Cannot %s object '%s', error %d\n",
-			req->payload ? "create" : "read", req->object, -errno);
-		ret = -errno;
+			req->payload ? "create" : "read", object, -errno);
 	}
 	free(dirname);
 	return ret;
 }
 
-int dir_delete_object(struct s3gw_request *req)
+int dir_delete_object(struct s3gw_request *req, const char *object)
 {
 	char *pathname;
 	int ret;
@@ -335,7 +335,7 @@ int dir_delete_object(struct s3gw_request *req)
 		       req->ctx->base_dir,
 		       req->owner,
 		       req->bucket,
-		       req->object);
+		       object);
 	if (ret < 0)
 		return -ENOMEM;
 

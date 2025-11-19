@@ -44,6 +44,7 @@ struct s3gw_object {
 	unsigned char *etag;
 	size_t etag_len;
 	time_t mtime;
+	int error;
 };
 
 struct s3gw_header {
@@ -89,8 +90,9 @@ char *get_owner_secret(struct s3gw_ctx *ctx, char *owner_id, int *out_len);
 int dir_create_bucket(struct s3gw_request *req);
 int dir_delete_bucket(struct s3gw_request *req);
 int dir_find_buckets(struct s3gw_request *req, struct linked_list *head);
-int dir_fetch_object(struct s3gw_request *req, struct s3gw_object *obj);
-int dir_delete_object(struct s3gw_request *req);
+int dir_fetch_object(struct s3gw_request *req, struct s3gw_object *obj,
+		     char *object);
+int dir_delete_object(struct s3gw_request *req, const char *object);
 int dir_find_objects(struct s3gw_request *req, struct linked_list *head,
 		     char *prefix);
 
@@ -105,6 +107,7 @@ char *create_object(struct s3gw_request *req, int *outlen);
 char *delete_object(struct s3gw_request *req, int *outlen);
 char *list_objects(struct s3gw_request *req, int *outlen);
 char *get_object(struct s3gw_request *req, int *outlen);
+char *delete_objects(struct s3gw_request *req, int *outlen);
 void clear_object(struct s3gw_object *obj);
 
 /* format.c */
@@ -115,6 +118,7 @@ void tcp_loop(struct s3gw_ctx *ctx);
 
 /* auth.c */
 char *bin2hex(unsigned char *input, int input_len, size_t *out_len);
+unsigned char *hex2bin(char *input, size_t *out_len);
 unsigned char *hmac_sha256(const void *key, int keylen,
 			   const unsigned char *data, int datalen,
 			   unsigned char *result, unsigned int *resultlen);

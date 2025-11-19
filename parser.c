@@ -188,6 +188,10 @@ static int parse_url(http_parser *http, const char *at, size_t len)
 		else if (req->bucket)
 			req->op = S3_OP_CreateBucket;
 		break;
+	case HTTP_POST:
+		if (req->bucket)
+			req->op = S3_OP_DeleteObjects;
+		break;
 	case HTTP_DELETE:
 		if (req->object)
 			req->op = S3_OP_DeleteObject;
