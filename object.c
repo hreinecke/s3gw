@@ -19,9 +19,9 @@ static xmlChar xmlns[] =
 char *create_object(struct s3gw_request *req, int *outlen)
 {
 	struct s3gw_object obj;
-	char *buf;
 	int ret;
 
+	req->status = HTTP_STATUS_OK;
 	ret = dir_create_object(req, &obj);
 	if (ret < 0) {
 		switch (ret) {
@@ -33,22 +33,15 @@ char *create_object(struct s3gw_request *req, int *outlen)
 			break;
 		}
 	}
-	req->status = HTTP_STATUS_OK;
-
-	ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n",
-		       req->status, http_status_str(req->status));
-	if (ret > 0)
-		*outlen = ret;
-	else
-		buf = NULL;
-	return buf;
+	clear_object(&obj);
+	return NULL;
 }
 
 char *delete_object(struct s3gw_request *req, int *outlen)
 {
-	char *buf;
 	int ret;
 
+	req->status = HTTP_STATUS_NO_CONTENT;
 	ret = dir_delete_object(req);
 	if (ret < 0) {
 		switch (ret) {
@@ -60,15 +53,7 @@ char *delete_object(struct s3gw_request *req, int *outlen)
 			break;
 		}
 	}
-	req->status = HTTP_STATUS_NO_CONTENT;
-
-	ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n",
-		       req->status, http_status_str(req->status));
-	if (ret > 0)
-		*outlen = ret;
-	else
-		buf = NULL;
-	return buf;
+	return NULL;
 }
 
 char *list_objects(struct s3gw_request *req, int *outlen)
@@ -79,11 +64,22 @@ char *list_objects(struct s3gw_request *req, int *outlen)
 	xmlDoc *doc;
 	xmlNsPtr ns;
 	xmlNode *root_node, *c_node, *o_node;
-	char *buf, *prefix;
+	char *buf, *prefix = NULL;
 	xmlChar *xml;
 	char *line;
 	int ret, cur = 0, num, line_len, xml_len;
 	unsigned long max_keys = 0;
+
+	INIT_LINKED_LIST(&top);
+	num = dir_find_objects(req, &top, prefix);
+	if (num < 0) {
+		if (num == -EPERM)
+			req->status = HTTP_STATUS_FORBIDDEN;
+		else
+			req->status = HTTP_STATUS_NOT_FOUND;
+		return NULL;
+	}
+	printf("found %d objects\n", num);
 
 	list_for_each_entry(q, &req->query_list, list) {
 		if (!strcmp(q->key, "max-keys")) {
@@ -113,17 +109,6 @@ char *list_objects(struct s3gw_request *req, int *outlen)
 	xmlNewChild(root_node, NULL, (const xmlChar *)"IsTruncated",
 		    (const xmlChar *)"false");
 	     
-	INIT_LINKED_LIST(&top);
-	num = dir_find_objects(req, &top, prefix);
-	if (num < 0) {
-		if (num != -EPERM) {
-			ret = num;
-			req->status = HTTP_STATUS_NOT_FOUND;
-			goto out_error;
-		}
-		num = 0;
-	}
-	printf("found %d objects\n", num);
 	list_for_each_entry_safe(o, t, &top, list) {
 		char time_str[64];
 		struct tm *tm;
@@ -182,15 +167,6 @@ char *list_objects(struct s3gw_request *req, int *outlen)
 	*outlen = ret;
 	free(xml);
 	return buf;
-
-out_error:
-	ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n",
-		       req->status, http_status_str(req->status));
-	if (ret > 0)
-		*outlen = ret;
-	else
-		buf = NULL;
-	return buf;
 }
 
 static char object_template[]=
@@ -205,11 +181,13 @@ static char object_template[]=
 char *check_object(struct s3gw_request *req, int *outlen)
 {
 	struct linked_list top;
-	struct s3gw_object *o, *t;
+	struct s3gw_object *obj;
 	char time_str[64];
 	struct tm *tm;
 	char *buf;
 	int ret;
+	char *etag;
+	size_t etag_len;
 
 	INIT_LINKED_LIST(&top);
 	ret = dir_find_objects(req, &top, NULL);
@@ -218,40 +196,32 @@ char *check_object(struct s3gw_request *req, int *outlen)
 			req->status = HTTP_STATUS_FORBIDDEN;
 		else
 			req->status = HTTP_STATUS_NOT_FOUND;
-		goto out_error;
+		return NULL;
 	}
 	if (ret > 1) {
 		req->status = HTTP_STATUS_CONFLICT;
-		goto out_error;
+		return NULL;
 	}
 	req->status = HTTP_STATUS_OK;
-	list_for_each_entry_safe(o, t, &top, list) {
-		char *etag;
-		size_t etag_len;
-
-		list_del(&o->list);
-		tm = localtime(&o->mtime);
-		strftime(time_str, 64, "%FT%T%z", tm);
-		etag = bin2hex(o->etag, 16, &etag_len);
-		ret = asprintf(&buf, object_template,
-			       req->status, http_status_str(req->status),
-			       time_str, o->size, etag);
-		if (ret < 0) {
-			req->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
-			goto out_error;
-		}
-		*outlen = ret;
-		break;
+	obj = list_first_entry(&top, struct s3gw_object, list);
+	list_del(&obj->list);
+	tm = localtime(&obj->mtime);
+	strftime(time_str, 64, "%FT%T%z", tm);
+	etag = bin2hex(obj->etag, 16, &etag_len);
+	if (!etag) {
+		req->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
+		return NULL;
 	}
-	return buf;
-
-out_error:
-	ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n",
-		       req->status, http_status_str(req->status));
+	ret = asprintf(&buf, object_template,
+		       req->status, http_status_str(req->status),
+		       time_str, obj->size, etag);
 	if (ret > 0)
 		*outlen = ret;
-	else
+	else {
+		req->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
 		buf = NULL;
+	}
+	free(etag);
 	return buf;
 }
 

@@ -34,7 +34,7 @@ static char *put_status(enum http_status s, const char *data, int *outlen)
 
 char *format_response(struct s3gw_request *req, int *outlen)
 {
-	char *buf;
+	char *buf = NULL;
 
 	if (check_authorization(req) < 0) {
 		buf = put_status(HTTP_STATUS_FORBIDDEN, NULL, outlen);
@@ -68,8 +68,10 @@ char *format_response(struct s3gw_request *req, int *outlen)
 		break;
 	default:
 		fprintf(stderr, "Invalid op %d\n", req->op);
-		buf = put_status(HTTP_STATUS_NOT_IMPLEMENTED, NULL, outlen);
+		req->status = HTTP_STATUS_NOT_IMPLEMENTED;
 		break;
 	}
+	if (!buf)
+		buf = put_status(req->status, NULL, outlen);
 	return buf;
 }

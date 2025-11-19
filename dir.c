@@ -298,7 +298,7 @@ out:
 int dir_create_object(struct s3gw_request *req, struct s3gw_object *obj)
 {
 	char *dirname;
-	int ret, fd;
+	int ret;
 
 	ret = asprintf(&dirname, "%s/%s/%s",
 		       req->ctx->base_dir,
