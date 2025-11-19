@@ -28,6 +28,47 @@ char *bin2hex(unsigned char *input, int input_len, size_t *out_len)
 	return output;
 }
 
+/* hex_to_bin() - copied from linux kernel sources */
+static int hex_to_bin(unsigned char ch)
+{
+        unsigned char cu = ch & 0xdf;
+        return -1 +
+                ((ch - '0' +  1) & (unsigned)((ch - '9' - 1) & ('0' - 1 - ch)) >> 8) +
+                ((cu - 'a' + 11) & (unsigned)((cu - 'f' - 1) & ('a' - 1 - cu)) >> 8);
+}
+
+unsigned char *hex2bin(char *input, size_t *out_len)
+{
+	size_t count = strlen(input);
+	unsigned char *output, *p;
+	int output_len;
+
+	output_len = count >> 1;
+	output = malloc(output_len);
+	if (!output)
+		return NULL;
+	memset(output, 0, output_len);
+	p = output;
+	while (count--) {
+		int hi, lo;
+
+		hi = hex_to_bin(*input++);
+		if (hi < 0)
+			break;
+		lo = hex_to_bin(*input++);
+		if (lo < 0)
+			break;
+		*p++ = (hi << 4) | lo;
+	}
+	if (!count)
+		*out_len = output_len;
+	else {
+		free(output);
+		output = NULL;
+	}
+	return output;
+}
+
 unsigned char *md5sum(char *input, int input_len, int *out_len)
 {
 	OSSL_LIB_CTX *ctx;
