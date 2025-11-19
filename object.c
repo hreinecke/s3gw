@@ -410,7 +410,7 @@ char *copy_object(struct s3gw_request *req, const char *source, int *outlen)
 	xmlNode *root;
 	xmlChar *xml;
 	struct tm *tm;
-	char *buf;
+	char *buf = NULL;
 	int ret, xml_len;
 	char *etag;
 	size_t etag_len;
@@ -420,6 +420,8 @@ char *copy_object(struct s3gw_request *req, const char *source, int *outlen)
 		req->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
 		return NULL;
 	}
+	memset(obj, 0, sizeof(*obj));
+
 	bucket = strdup(source);
 	b = strtok_r(bucket, "/", &save);
 	if (!b) {

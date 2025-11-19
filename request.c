@@ -212,7 +212,7 @@ char *fetch_request_header(struct s3gw_request *req, const char *key, int *len)
 	struct s3gw_header *hdr;
 
 	list_for_each_entry(hdr, &req->hdr_list, list) {
-		if (strcmp(hdr->key, key)) {
+		if (!strcmp(hdr->key, key)) {
 			*len = hdr->value ? strlen(hdr->value) : 0;
 			return hdr->value;
 		}

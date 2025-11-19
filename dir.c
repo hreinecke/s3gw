@@ -334,6 +334,7 @@ int dir_splice_objects(struct s3gw_request *req,
 	char *pathname;
 	struct stat st;
 	int s_fd, d_fd, ret;
+	void *s_map, *d_map;
 
 	ret = asprintf(&pathname, "%s/%s/%s/%s",
 		       req->ctx->base_dir,
@@ -373,11 +374,47 @@ int dir_splice_objects(struct s3gw_request *req,
 		goto out_close_source;
 	}
 	ret = splice(s_fd, NULL, d_fd, NULL, st.st_size, 0);
-	if (ret < 0) {
+	if (ret > 0)
+		goto out_close_dest;
+
+	if (errno != EINVAL) {
 		fprintf(stderr, "%s: splice object %s/%s to %s/%s error %d\n",
 			__func__, s_bucket, s_obj, d_bucket, d_obj, errno);
 		ret = -errno;
+		goto out_close_dest;
 	}
+	/* Not supported, try mmap */
+	s_map = mmap(NULL, st.st_size, PROT_READ,
+		     MAP_PRIVATE, s_fd, 0);
+	if (s_map == MAP_FAILED) {
+		fprintf(stderr, "%s: mmap source object %s/%s error %d\n",
+			__func__, s_bucket, s_obj, errno);
+		goto out_close_dest;
+	}
+	if (lseek(d_fd, st.st_size, SEEK_SET) < 0) {
+		fprintf(stderr, "%s: lseek destination object %s/%s error %d\n",
+			__func__, d_bucket, d_obj, errno);
+		goto out_close_dest;
+	}
+	ret = write(d_fd, "", 1);
+	if (ret < 0) {
+		fprintf(stderr, "%s: extend destination object %s/%s error %d\n",
+			__func__, d_bucket, d_obj, errno);
+		goto out_close_dest;
+	}
+	d_map = mmap(NULL, st.st_size, PROT_WRITE | PROT_READ,
+		     MAP_PRIVATE, d_fd, 0);
+	if (d_map == MAP_FAILED) {
+		fprintf(stderr, "%s: mmap destination object %s/%s error %d\n",
+			__func__, d_bucket, d_obj, errno);
+		goto out_unmap_source;
+	}
+	memcpy(d_map, s_map, st.st_size);
+	msync(d_map, st.st_size, MS_SYNC);
+	munmap(d_map, st.st_size);
+out_unmap_source:
+	munmap(s_map, st.st_size);
+out_close_dest:
 	close(d_fd);
 out_close_source:
 	close(s_fd);

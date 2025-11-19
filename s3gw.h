@@ -111,6 +111,7 @@ char *create_object(struct s3gw_request *req, int *outlen);
 char *delete_object(struct s3gw_request *req, int *outlen);
 char *list_objects(struct s3gw_request *req, int *outlen);
 char *get_object(struct s3gw_request *req, int *outlen);
+char *copy_object(struct s3gw_request *req, const char *source, int *outlen);
 char *delete_objects(struct s3gw_request *req, int *outlen);
 void clear_object(struct s3gw_object *obj);
 

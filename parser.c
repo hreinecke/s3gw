@@ -130,7 +130,8 @@ static int parse_query(struct s3gw_request *req)
 	}
 	free(query);
 	list_for_each_entry(hdr, &req->query_list, list)
-		printf("query: %s = %s\n", hdr->key, hdr->value);
+		printf("query: %s = %s\n", hdr->key,
+		       hdr->value ? hdr->value : "");
 	return 0;
 }
 
