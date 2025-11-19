@@ -74,16 +74,33 @@ except Exception as e:
 print(f'{resp}')
 
 try:
+    resp = s3_client.copy_object(
+        Bucket='s3gw-test-bucket-1',
+        CopySource={
+            'Bucket': 's3gw-test-bucket-1',
+            'Key': 'server-cert.pem',
+        },
+        Key='server-cert-2.pem',
+    )
+except Exception as e:
+    resp = f'{e}';
+    pass
+print(f'{resp}')
+
+try:
     resp = s3_client.delete_objects(
         Bucket='s3gw-test-bucket-1',
         Delete={
             'Objects': [
                 {
                     'Key':'server-cert.pem',
+                },
+                {
+                    'Key': 'server-cert-2.pem',
                 }
             ]
-            }
-        )
+        }
+    )
 except Exception as e:
     resp = f'{e}'
     pass

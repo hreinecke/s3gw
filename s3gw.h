@@ -83,6 +83,7 @@ void setup_parser(http_parser_settings *settings);
 void init_request(struct s3gw_ctx *ctx, struct s3gw_request *req);
 void reset_request(struct s3gw_request *req);
 size_t handle_request(struct s3gw_request *req);
+char *fetch_request_header(struct s3gw_request *req, const char *key, int *len);
 
 /* dir.c */
 int create_owner_secret(struct s3gw_ctx *ctx, char *owner_id, char *secret);
@@ -91,10 +92,13 @@ int dir_create_bucket(struct s3gw_request *req);
 int dir_delete_bucket(struct s3gw_request *req);
 int dir_find_buckets(struct s3gw_request *req, struct linked_list *head);
 int dir_fetch_object(struct s3gw_request *req, struct s3gw_object *obj,
-		     char *object);
+		     const char *bucket, const char *object);
 int dir_delete_object(struct s3gw_request *req, const char *object);
 int dir_find_objects(struct s3gw_request *req, struct linked_list *head,
 		     char *prefix);
+int dir_splice_objects(struct s3gw_request *req,
+		       char *s_bucket, char *s_obj,
+		       char *d_bucket, char *d_obj);
 
 /* bucket.c */
 char *create_bucket(struct s3gw_request *req, int *outlen);

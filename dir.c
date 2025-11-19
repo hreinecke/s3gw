@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -229,8 +230,9 @@ int dir_find_buckets(struct s3gw_request *req, struct linked_list *head)
 	return num;
 }
 
-static int fill_object(struct s3gw_object *obj, char *dirname, char *name,
-		       unsigned char *payload, size_t payload_len)
+static int fill_object(struct s3gw_object *obj, const char *dirname,
+		       const char *name, const unsigned char *payload,
+		       size_t payload_len)
 {
 	char *pathname;
 	unsigned char *etag;
@@ -304,15 +306,14 @@ out:
 }
 
 int dir_fetch_object(struct s3gw_request *req, struct s3gw_object *obj,
-		     char *object)
+		     const char *bucket, const char *object)
 {
 	char *dirname;
 	int ret;
 
 	ret = asprintf(&dirname, "%s/%s/%s",
 		       req->ctx->base_dir,
-		       req->owner,
-		       req->bucket);
+		       req->owner, bucket);
 	if (ret < 0)
 		return -ENOMEM;
 
@@ -323,6 +324,64 @@ int dir_fetch_object(struct s3gw_request *req, struct s3gw_object *obj,
 			req->payload ? "create" : "read", object, -errno);
 	}
 	free(dirname);
+	return ret;
+}
+
+int dir_splice_objects(struct s3gw_request *req,
+		       char *s_bucket, char *s_obj,
+		       char *d_bucket, char *d_obj)
+{
+	char *pathname;
+	struct stat st;
+	int s_fd, d_fd, ret;
+
+	ret = asprintf(&pathname, "%s/%s/%s/%s",
+		       req->ctx->base_dir,
+		       req->owner, s_bucket, s_obj);
+	if (ret < 0)
+		return -errno;
+
+	s_fd = open(pathname, O_RDONLY);
+	if (s_fd < 0) {
+		fprintf(stderr, "%s: source object %s open error %d\n",
+			__func__, pathname, errno);
+		free(pathname);
+		return -errno;
+	}
+	ret = fstat(s_fd, &st);
+	if (ret < 0) {
+		fprintf(stderr, "%s: source object %s stat error %d\n",
+			__func__, pathname, errno);
+		ret = -errno;
+		goto out_close_source;
+	}
+
+	free(pathname);
+	ret = asprintf(&pathname, "%s/%s/%s/%s",
+		       req->ctx->base_dir,
+		       req->owner, d_bucket, d_obj);
+	if (ret < 0) {
+		close(s_fd);
+		return -errno;
+	}
+
+	d_fd = open(pathname, O_RDWR | O_CREAT, 0644);
+	if (d_fd < 0) {
+		fprintf(stderr, "%s: destination object %s open error %d\n",
+			__func__, pathname, errno);
+		ret = -errno;
+		goto out_close_source;
+	}
+	ret = splice(s_fd, NULL, d_fd, NULL, st.st_size, 0);
+	if (ret < 0) {
+		fprintf(stderr, "%s: splice object %s/%s to %s/%s error %d\n",
+			__func__, s_bucket, s_obj, d_bucket, d_obj, errno);
+		ret = -errno;
+	}
+	close(d_fd);
+out_close_source:
+	close(s_fd);
+	free(pathname);
 	return ret;
 }
 

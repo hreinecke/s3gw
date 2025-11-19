@@ -23,7 +23,7 @@ char *create_object(struct s3gw_request *req, int *outlen)
 
 	memset(&obj, 0, sizeof(obj));
 	req->status = HTTP_STATUS_OK;
-	ret = dir_fetch_object(req, &obj, req->object);
+	ret = dir_fetch_object(req, &obj, req->bucket, req->object);
 	if (ret < 0) {
 		switch (ret) {
 		case -EEXIST:
@@ -93,7 +93,8 @@ void traverse_xml(struct s3gw_request *req, xmlNode *node,
 			p = (char *)cur->content;
 			switch (offset) {
 			case offsetof(struct s3gw_object, key):
-				ret = dir_fetch_object(req, obj, p);
+				ret = dir_fetch_object(req, obj,
+						       req->bucket, p);
 				if (ret < 0)
 					obj->error = ret;
 				break;
@@ -350,7 +351,7 @@ char *get_object(struct s3gw_request *req, int *outlen)
 		req->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
 		return NULL;
 	}
-	ret = dir_fetch_object(req, obj, req->object);
+	ret = dir_fetch_object(req, obj, req->bucket, req->object);
 	if (ret < 0) {
 		if (ret == -EPERM)
 			req->status = HTTP_STATUS_FORBIDDEN;
@@ -388,6 +389,89 @@ out_free_obj:
 		clear_object(obj);
 		free(obj);
 	}
+	return buf;
+}
+
+char *copy_object(struct s3gw_request *req, const char *source, int *outlen)
+{
+	struct s3gw_object *obj;
+	char *bucket, *b, *o, *e, *save;
+	char cur_time_str[64], mod_time_str[64];
+	time_t now = time(NULL);
+	struct tm *tm;
+	char *buf;
+	int ret;
+	char *etag;
+	size_t etag_len;
+
+	obj = malloc(sizeof(*obj));
+	if (!obj) {
+		req->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
+		return NULL;
+	}
+	bucket = strdup(source);
+	b = strtok_r(bucket, "/", &save);
+	if (!b) {
+		req->status = HTTP_STATUS_NOT_FOUND;
+		free(bucket);
+		goto out_free_obj;
+	}
+	o = strtok_r(NULL, "/", &save);
+	if (!o) {
+		b = req->bucket;
+		o = b;
+	}
+	e = strtok_r(NULL, "/", &save);
+	if (e) {
+		req->status = HTTP_STATUS_NOT_FOUND;
+		free(bucket);
+		goto out_free_obj;
+	}
+
+	ret = dir_splice_objects(req, b, o, req->bucket, req->object);
+	if (ret < 0) {
+		req->status = HTTP_STATUS_NOT_FOUND;
+		free(bucket);
+		goto out_free_obj;
+	}
+	free(bucket);
+	ret = dir_fetch_object(req, obj, req->bucket, req->object);
+	if (ret < 0) {
+		if (ret == -EPERM)
+			req->status = HTTP_STATUS_FORBIDDEN;
+		else
+			req->status = HTTP_STATUS_NOT_FOUND;
+		goto out_free_obj;
+	}
+	req->status = HTTP_STATUS_OK;
+
+	tm = localtime(&obj->mtime);
+	strftime(mod_time_str, 64, "%FT%T%z", tm);
+	tm = localtime(&now);
+	strftime(cur_time_str, 64, "%FT%T%z", tm);
+	etag = bin2hex(obj->etag, 16, &etag_len);
+	if (!etag) {
+		req->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
+		goto out_free_obj;
+	}
+	ret = asprintf(&buf, object_template,
+		       req->status, http_status_str(req->status),
+		       cur_time_str, mod_time_str, obj->size, etag);
+	if (ret > 0) {
+		if (req->op == S3_OP_GetObject) {
+			req->obj = obj;
+			obj = NULL;
+		}
+		*outlen = ret;
+	} else {
+		req->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
+		buf = NULL;
+	}
+	free(etag);
+out_free_obj:
+	clear_object(obj);
+	free(obj);
+
 	return buf;
 }
 

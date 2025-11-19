@@ -34,11 +34,19 @@ static char *put_status(enum http_status s, const char *data, int *outlen)
 
 char *format_response(struct s3gw_request *req, int *outlen)
 {
-	char *buf = NULL;
+	char *buf = NULL, *source = NULL;
+	int len;
 
 	if (check_authorization(req) < 0) {
 		buf = put_status(HTTP_STATUS_FORBIDDEN, NULL, outlen);
 		return buf;
+	}
+
+	if (req->op == S3_OP_PutObject) {
+		source = fetch_request_header(req, "x-amz-copy-source", &len);
+		if (source && len) {
+			req->op = S3_OP_CopyObject;
+		}
 	}
 
 	switch (req->op) {
@@ -71,6 +79,9 @@ char *format_response(struct s3gw_request *req, int *outlen)
 		break;
 	case S3_OP_HeadObject:
 		buf = get_object(req, outlen);
+		break;
+	case S3_OP_CopyObject:
+		buf = copy_object(req, source, outlen);
 		break;
 	default:
 		fprintf(stderr, "Invalid op %d\n", req->op);
