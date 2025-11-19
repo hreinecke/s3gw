@@ -175,7 +175,7 @@ char *auth_string_to_sign(struct s3gw_request *req, int *out_len)
 		list_for_each_entry(hdr, &req->query_list, list) {
 			ret = sprintf(query + off, "%s%s=%s",
 				      off == 0 ? "" : "&",
-				      hdr->key, hdr->value);
+				      hdr->key, hdr->value ? hdr->value : "");
 			off += ret;
 		}
 	} else {
