@@ -311,20 +311,10 @@ char *list_objects(struct s3gw_request *req, int *outlen)
 	return buf;
 }
 
-static char object_template[]=
-	"HTTP/1.1 %d %s\r\n"
-	"Date: %s\r\n"
-	"Last-Modified: %s\r\n"
-	"Content-Length: %lu\r\n"
-	"ETag: %s\r\n"
-	"Content-Type: application/binary\r\n"
-	"Connection: close\r\n"
-	"Server: s3gw\r\n";
-
 char *get_object(struct s3gw_request *req, int *outlen)
 {
 	struct s3gw_object *obj;
-	char cur_time_str[64], mod_time_str[64];
+	char line[64];
 	time_t now = time(NULL);
 	struct tm *tm;
 	char *buf;
@@ -348,18 +338,23 @@ char *get_object(struct s3gw_request *req, int *outlen)
 	req->status = HTTP_STATUS_OK;
 
 	tm = localtime(&obj->mtime);
-	strftime(mod_time_str, 64, "%FT%T%z", tm);
+	strftime(line, sizeof(line), "%FT%T%z", tm);
+	put_response_header(req, "Date", line);
 	tm = localtime(&now);
-	strftime(cur_time_str, 64, "%FT%T%z", tm);
+	strftime(line, 64, "%FT%T%z", tm);
+	put_response_header(req, "Last-Modified", line);
+	sprintf(line, "%lu", obj->size);
+	put_response_header(req, "Size", line);
 	etag = bin2hex(obj->etag, 16, &etag_len);
 	if (!etag) {
 		req->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
 		goto out_free_obj;
 	}
-	ret = asprintf(&buf, object_template,
-		       req->status, http_status_str(req->status),
-		       cur_time_str, mod_time_str, obj->size, etag);
-	if (ret > 0) {
+	put_response_header(req, "ETag", etag);
+	put_response_header(req, "Connection", "close");
+	put_response_header(req, "Server", "s3gw");
+	buf = gen_response_header(req, &ret);
+	if (buf) {
 		if (req->op == S3_OP_GetObject) {
 			req->obj = obj;
 			obj = NULL;
@@ -367,7 +362,6 @@ char *get_object(struct s3gw_request *req, int *outlen)
 		*outlen = ret;
 	} else {
 		req->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
-		buf = NULL;
 	}
 	free(etag);
 out_free_obj:

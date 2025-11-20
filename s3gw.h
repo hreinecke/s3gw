@@ -67,6 +67,7 @@ struct s3gw_request {
 	struct linked_list hdr_list;
 	struct linked_list auth_list;
 	struct linked_list query_list;
+	struct linked_list resp_hdr_list;
 	void *next_hdr;
 	char *owner;
 	char *region;
@@ -121,6 +122,8 @@ char *delete_objects(struct s3gw_request *req, int *outlen);
 void clear_object(struct s3gw_object *obj);
 
 /* format.c */
+int put_response_header(struct s3gw_request *req, const char *key, char *value);
+char *gen_response_header(struct s3gw_request *req, int *outlen);
 char *format_response(struct s3gw_request *req, int *outlen);
 
 void tls_loop(struct s3gw_ctx *ctx);

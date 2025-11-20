@@ -11,6 +11,66 @@
 #include "s3_api.h"
 #include "s3gw.h"
 
+int put_response_header(struct s3gw_request *req, const char *key, char *value)
+{
+	struct s3gw_header *hdr;
+
+	hdr = malloc(sizeof(*hdr));
+	if (!hdr)
+		return -ENOMEM;
+	memset(hdr, 0, sizeof(*hdr));
+	hdr->key = strdup(key);
+	if (value)
+		hdr->value = strdup(value);
+	list_add(&hdr->list, &req->resp_hdr_list);
+	return 0;
+}
+
+char *gen_response_header(struct s3gw_request *req, int *outlen)
+{
+	struct s3gw_header *hdr;
+	char *header;
+	size_t len, off;
+	int ret;
+
+	len = strlen(http_status_str(req->status)) + 20;
+	list_for_each_entry(hdr, &req->resp_hdr_list, list) {
+		len += strlen(hdr->key);
+		if (hdr->value) {
+			len += strlen(hdr->value) + 2;
+		}
+		len += 2;
+	}
+	header = malloc(len + 1);
+	if (!header)
+		return NULL;
+
+	memset(header, 0, len + 1);
+	ret = sprintf(header, "HTTP/1.1 %d %s\r\n",
+		     req->status, http_status_str(req->status));
+	if (ret < 0) {
+		free(header);
+		return NULL;
+	}
+	off = ret;
+	list_for_each_entry(hdr, &req->resp_hdr_list, list) {
+		if (hdr->value)
+			ret = sprintf(header + off,
+				       "%s: %s\r\n",
+				       hdr->key, hdr->value);
+		else
+			ret = sprintf(header + off, "%s\r\n",
+				       hdr->key);
+		if (ret < 0) {
+			free(header);
+			return NULL;
+		}
+		off += ret;
+	}
+	*outlen = off;
+	return header;
+}
+
 static char *put_status(enum http_status s, const char *data, int *outlen)
 {
 	char *buf;
