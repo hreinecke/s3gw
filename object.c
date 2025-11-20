@@ -126,7 +126,7 @@ char *delete_objects(struct s3gw_request *req, struct s3gw_response *resp,
 	xmlDoc *doc;
 	xmlNs *ns;
 	xmlNode *root, *node;
-	xmlChar *xml;
+	char line[64];
 	char *buf;
 	int xml_len, ret;
 
@@ -200,20 +200,19 @@ char *delete_objects(struct s3gw_request *req, struct s3gw_response *resp,
 		clear_object(obj);
 		free(obj);
 	}
-	xmlDocDumpMemory(doc, &xml, &xml_len);
+	xmlDocDumpMemory(doc, &resp->payload, &xml_len);
+	resp->payload_len = xml_len;
 	xmlFreeDoc(doc);
 	resp->status = HTTP_STATUS_OK;
 
-	ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n"
-		       "Content-Length: %d\r\n\r\n%s",
-		       resp->status, http_status_str(resp->status),
-		       xml_len, xml);
-	if (ret > 0)
+	sprintf(line, "%ld", resp->payload_len);
+	put_response_header(resp, "Content-Length", line);
+	buf = gen_response_header(resp, &ret);
+	if (buf)
 		*outlen = ret;
 	else
-		buf = NULL;
+		resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
 
-	free(xml);
 	return buf;
 }
 
