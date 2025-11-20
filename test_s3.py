@@ -1,14 +1,21 @@
 #!/usr/bin/python3.11
 
 import boto3
+from botocore.config import Config
+
+s3_config = Config(
+    region_name = 'eu-west-2',
+    signature_version = 'v4',
+    )
 
 session = boto3.session.Session()
 
 s3_client = session.client(
-    service_name='s3',
-    aws_access_key_id='aaa',
-    aws_secret_access_key='bbb',
-    endpoint_url='http://localhost:7878')
+    service_name = 's3',
+    aws_access_key_id = 'aaa',
+    aws_secret_access_key = 'bbb',
+    config = s3_config,
+    endpoint_url = 'http://localhost:7878')
 
 all_buckets = s3_client.list_buckets(
         MaxBuckets=64,

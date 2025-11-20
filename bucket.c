@@ -10,12 +10,47 @@
 #include "s3_api.h"
 #include "s3gw.h"
 
+xmlNode *find_node(xmlNode *top, const char *key)
+{
+	xmlNode *node;
+
+	for (node = top; node; node = node->next) {
+		if (node->type == XML_ELEMENT_NODE) {
+			key = (char *)node->name;
+			if (!strcmp((const char *)node->name, key)) {
+				return node->children;
+			}
+		}
+	}
+	return NULL;
+}
+
 char *create_bucket(struct s3gw_request *req, int *outlen)
 {
 	char *buf;
+	const char *location = NULL;
 	int ret;
 
-	/* XXX: Need to check location constraint here */
+	if (req->xml) {
+		xmlNode *root, *node, *conf, *constraint;
+
+		root = xmlDocGetRootElement(req->xml);
+		conf = find_node(root, "CreateBucketConfiguration");
+		if (conf) {
+			constraint = find_node(conf, "LocationConstraint");
+			for (node = constraint; node; node = node->next) {
+				if (node->type == XML_TEXT_NODE) {
+					location = (const char *)node->content;
+				}
+			}
+		}
+	}
+	if (location && !strcmp(req->region, location)) {
+		fprintf(stderr, "Cannot create bucket in location '%s'\n",
+			location);
+		req->status = HTTP_STATUS_FORBIDDEN;
+		return NULL;
+	}
 	ret = dir_create_bucket(req);
 	if (ret < 0) {
 		req->status = HTTP_STATUS_BAD_REQUEST;
@@ -25,13 +60,21 @@ char *create_bucket(struct s3gw_request *req, int *outlen)
 		return NULL;
 	}
 	req->status = HTTP_STATUS_OK;
-	ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n"
-		       "x-amz-bucket-region: %s\r\n"
-		       "Location: /%s\r\n"
-		       "Content-Length: 0\r\n"
-		       "Connection: close\r\n",
-		       req->status, http_status_str(req->status),
-		       req->region, req->bucket);
+	if (location)
+		ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n"
+			       "x-amz-bucket-region: %s\r\n"
+			       "Location: /%s\r\n"
+			       "Content-Length: 0\r\n"
+			       "Connection: close\r\n",
+			       req->status, http_status_str(req->status),
+			       req->region, req->bucket);
+	else
+		ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n"
+			       "Location: /%s\r\n"
+			       "Content-Length: 0\r\n"
+			       "Connection: close\r\n",
+			       req->status, http_status_str(req->status),
+			       req->bucket);
 	if (ret > 0)
 		*outlen = ret;
 	else {
