@@ -10,14 +10,13 @@
 #include "s3_api.h"
 #include "s3gw.h"
 
-xmlNode *find_node(xmlNode *top, const char *key)
+xmlNode *find_node(xmlNode *top, const xmlChar *key)
 {
 	xmlNode *node;
 
 	for (node = top; node; node = node->next) {
 		if (node->type == XML_ELEMENT_NODE) {
-			key = (char *)node->name;
-			if (!strcmp((const char *)node->name, key)) {
+			if (!xmlStrcmp(node->name, key)) {
 				return node->children;
 			}
 		}
@@ -35,9 +34,9 @@ char *create_bucket(struct s3gw_request *req, int *outlen)
 		xmlNode *root, *node, *conf, *constraint;
 
 		root = xmlDocGetRootElement(req->xml);
-		conf = find_node(root, "CreateBucketConfiguration");
+		conf = find_node(root, (const xmlChar *)"CreateBucketConfiguration");
 		if (conf) {
-			constraint = find_node(conf, "LocationConstraint");
+			constraint = find_node(conf, (const xmlChar *)"LocationConstraint");
 			for (node = constraint; node; node = node->next) {
 				if (node->type == XML_TEXT_NODE) {
 					location = (const char *)node->content;

@@ -101,6 +101,7 @@ int dir_splice_objects(struct s3gw_request *req,
 		       char *d_bucket, char *d_obj);
 
 /* bucket.c */
+xmlNode *find_node(xmlNode *top, const xmlChar *key);
 char *create_bucket(struct s3gw_request *req, int *outlen);
 char *delete_bucket(struct s3gw_request *req, int *outlen);
 char *list_buckets(struct s3gw_request *req, int *outlen);

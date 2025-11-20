@@ -57,76 +57,58 @@ char *delete_object(struct s3gw_request *req, int *outlen)
 	return NULL;
 }
 
-void traverse_xml(struct s3gw_request *req, xmlNode *node,
-		  struct s3gw_object *obj,
-		  size_t offset, struct linked_list *top)
+void xml_delete_list(struct s3gw_request *req, xmlNode *root,
+		     struct linked_list *head)
 {
-	xmlNode *cur = NULL;
-	char *p, *eptr, *key;
-	unsigned long size;
-	size_t etag_len;
-	unsigned char *etag;
+	xmlNode *del_node, *obj_node, *node;
+	struct s3gw_object *obj;
 	int ret;
 
-	for (cur = node; cur; cur = cur->next) {
-		if (cur->type == XML_ELEMENT_NODE) {
-			key = (char *)cur->name;
-			if (!strcmp(key, "Object")) {
-				obj = malloc(sizeof(*obj));
-				if (!obj)
-					return;
-				list_add(&obj->list, top);
-			} else if (!strcmp(key, "Key")) {
-				offset = offsetof(struct s3gw_object, key);
-			} else if (!strcmp(key, "ETag")) {
-				offset = offsetof(struct s3gw_object, etag);
-			} else if (!strcmp(key, "Size")) {
-				offset = offsetof(struct s3gw_object, size);
-			}
-			goto next_child;
+	del_node = find_node(root, (const xmlChar *)"Delete");
+	if (!del_node)
+		return;
+
+	for(obj_node = del_node; obj_node; obj_node = obj_node->next) {
+		if (xmlStrcmp(obj_node->name, (const xmlChar *)"Object"))
+			continue;
+		obj = malloc(sizeof(*obj));
+		if (!obj)
+			continue;
+		node = find_node(obj_node, (const xmlChar *)"Key");
+		if (!node) {
+			free(obj);
+			continue;
 		}
-		if (cur->type == XML_TEXT_NODE) {
-			if (!obj) {
-				printf("No object during traversal\n");
-				goto next_child;
-			}
-			p = (char *)cur->content;
-			switch (offset) {
-			case offsetof(struct s3gw_object, key):
-				ret = dir_fetch_object(req, obj,
-						       req->bucket, p);
-				if (ret < 0)
-					obj->error = ret;
-				break;
-			case offsetof(struct s3gw_object, etag):
-				etag = hex2bin(p, &etag_len);
-				if (!obj->etag) {
-					fprintf(stderr,
-						"object '%s' no etag\n",
-						obj->key);
-				} else if (memcmp(etag, obj->etag,
-						  etag_len)) {
-					fprintf(stderr,
-						"object '%s' etag mismatch\n",
-						obj->key);
-					obj->error = -ENOKEY;
-				}
-				break;
-			case offsetof(struct s3gw_object, size):
-				size = strtoul(p, &eptr, 10);
-				if (p == eptr)
-					size = 0;
-				if (size != obj->size) {
-					fprintf(stderr,
-						"object '%s' size mismatch\n",
-						obj->key);
-					obj->error = -EFBIG;
-				}
-				break;
+		list_add(&obj->list, head);
+		if (node) {
+			ret = dir_fetch_object(req, obj, req->bucket,
+					       (const char *)node->content);
+			if (ret < 0)
+				obj->error = ret;
+		}
+		node = find_node(obj_node, (const xmlChar *)"ETag");
+		if (node) {
+			unsigned char *etag;
+			size_t etag_len;
+
+			etag = hex2bin((char *)node->content, &etag_len);
+			if (memcmp(etag, obj->etag, etag_len)) {
+				obj->error = -ENOKEY;
 			}
 		}
-	next_child:
-		traverse_xml(req, cur->children, obj, offset, top);
+		node = find_node(obj_node, (const xmlChar *)"Size");
+		if (node) {
+			unsigned long size;
+			char *p, *eptr;
+
+			p = (char *)node->content;
+			size = strtoul(p, &eptr, 10);
+			if (p == eptr)
+				size = 0;
+			if (size && size != obj->size) {
+				obj->error = -E2BIG;
+			}
+		}
 	}
 }
 
@@ -142,8 +124,12 @@ char *delete_objects(struct s3gw_request *req, int *outlen)
 	int xml_len, ret;
 
 	INIT_LINKED_LIST(&top);
+	if (!req->xml) {
+		req->status = HTTP_STATUS_NOT_FOUND;
+		return NULL;
+	}
 	root = xmlDocGetRootElement(req->xml);
-	traverse_xml(req, root, NULL, 0, &top);
+	xml_delete_list(req, root, &top);
 	xmlFreeDoc(req->xml);
 	req->xml = NULL;
 
