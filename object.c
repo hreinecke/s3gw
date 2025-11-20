@@ -226,7 +226,6 @@ char *list_objects(struct s3gw_request *req, struct s3gw_response *resp,
 	char line[64];
 	int ret, cur = 0, num, line_len, xml_len;
 	unsigned long max_keys = 0;
-	time_t now = time(NULL);
 	struct tm *tm;
 
 	INIT_LINKED_LIST(&top);
@@ -313,11 +312,6 @@ char *list_objects(struct s3gw_request *req, struct s3gw_response *resp,
 	xmlFreeDoc(doc);
 	resp->status = HTTP_STATUS_OK;
 
-	tm = localtime(&now);
-	strftime(line, 64, "%FT%T%z", tm);
-	put_response_header(resp, "Date", line);
-	put_response_header(resp, "Connection", "close");
-	put_response_header(resp, "Server", "s3gw");
 	buf = gen_response_header(resp, &ret);
 	if (buf)
 		*outlen = ret;
@@ -331,7 +325,6 @@ char *get_object(struct s3gw_request *req, struct s3gw_response *resp,
 {
 	struct s3gw_object *obj;
 	char line[64];
-	time_t now = time(NULL);
 	struct tm *tm;
 	char *buf;
 	int ret;
@@ -354,9 +347,6 @@ char *get_object(struct s3gw_request *req, struct s3gw_response *resp,
 	resp->status = HTTP_STATUS_OK;
 
 	tm = localtime(&obj->mtime);
-	strftime(line, sizeof(line), "%FT%T%z", tm);
-	put_response_header(resp, "Date", line);
-	tm = localtime(&now);
 	strftime(line, 64, "%FT%T%z", tm);
 	put_response_header(resp, "Last-Modified", line);
 	sprintf(line, "%lu", obj->size);
@@ -367,8 +357,6 @@ char *get_object(struct s3gw_request *req, struct s3gw_response *resp,
 		goto out_free_obj;
 	}
 	put_response_header(resp, "ETag", etag);
-	put_response_header(resp, "Connection", "close");
-	put_response_header(resp, "Server", "s3gw");
 	buf = gen_response_header(resp, &ret);
 	if (buf) {
 		if (req->op == S3_OP_GetObject) {
@@ -394,7 +382,6 @@ char *copy_object(struct s3gw_request *req, struct s3gw_response *resp,
 	struct s3gw_object *obj;
 	char *bucket, *b, *o, *e, *save;
 	char line[64];
-	time_t now = time(NULL);
 	xmlDoc *doc;
 	xmlNs *ns;
 	xmlNode *root;
@@ -471,11 +458,6 @@ char *copy_object(struct s3gw_request *req, struct s3gw_response *resp,
 	xmlFreeDoc(doc);
 	resp->payload_len = xml_len;
 
-	tm = localtime(&now);
-	strftime(line, 64, "%FT%T%z", tm);
-	put_response_header(resp, "Date", line);
-	put_response_header(resp, "Connection", "close");
-	put_response_header(resp, "Server", "s3gw");
 	buf = gen_response_header(resp, &ret);
 	if (buf)
 		*outlen = ret;

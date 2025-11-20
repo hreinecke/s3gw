@@ -64,8 +64,6 @@ char *create_bucket(struct s3gw_request *req, struct s3gw_response *resp,
 		put_response_header(resp, "x-amz-bucket-region",
 				    (char *)location);
 	put_response_header(resp, "Location", req->bucket);
-	put_response_header(resp, "Connection", "close");
-	put_response_header(resp, "Server", "s3gw");
 	buf = gen_response_header(resp, &ret);
 	if (buf)
 		*outlen = ret;
@@ -76,9 +74,6 @@ char *delete_bucket(struct s3gw_request *req, struct s3gw_response *resp,
 		    int *outlen)
 {
 	char *buf;
-	time_t now = time(NULL);
-	struct tm *tm;
-	char time_str[64];
 	int ret;
 
 	ret = dir_delete_bucket(req, req->bucket);
@@ -100,10 +95,7 @@ char *delete_bucket(struct s3gw_request *req, struct s3gw_response *resp,
 		return NULL;
 	}
 	resp->status = HTTP_STATUS_NO_CONTENT;
-	tm = localtime(&now);
-	strftime(time_str, 64, "%c", tm);
-	put_response_header(resp, "Date", time_str);
-	put_response_header(resp, "Connection", "close");
+
 	buf = gen_response_header(resp, &ret);
 	if (buf)
 		*outlen = ret;
@@ -122,7 +114,6 @@ char *list_buckets(struct s3gw_request *req, struct s3gw_response *resp,
 	int xml_len;
 	char *buf;
 	char line[64];
-	time_t now = time(NULL);
 	struct tm *tm;
 	int ret;
 
@@ -178,9 +169,6 @@ char *list_buckets(struct s3gw_request *req, struct s3gw_response *resp,
 	resp->payload_len = xml_len;
 	xmlFreeDoc(doc);
 
-	tm = localtime(&now);
-	strftime(line, 64, "%FT%T%z", tm);
-	put_response_header(resp, "Date", line);
 	buf = gen_response_header(resp, &ret);
 	if (buf)
 		*outlen = ret;

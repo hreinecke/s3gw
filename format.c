@@ -30,9 +30,15 @@ int put_response_header(struct s3gw_response *resp, const char *key,
 char *gen_response_header(struct s3gw_response *resp, int *outlen)
 {
 	struct s3gw_header *hdr;
+	time_t now = time(NULL);
+	struct tm *tm;
 	char *header, line[64];
 	size_t len, off;
 	int ret;
+
+	tm = localtime(&now);
+	strftime(line, 64, "%FT%T%z", tm);
+	put_response_header(resp, "Date", line);
 
 	if (resp->payload_len) {
 		sprintf(line, "%ld", resp->payload_len);
