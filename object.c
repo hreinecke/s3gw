@@ -14,7 +14,7 @@
 #include "s3gw.h"
 
 static xmlChar xmlns[] =
-	"xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\"";
+	"http://s3.amazonaws.com/doc/2006-03-01/";
 
 char *create_object(struct s3gw_request *req, int *outlen)
 {

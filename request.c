@@ -83,6 +83,11 @@ void reset_request(struct s3gw_request *req)
 		free(req->payload);
 		req->payload = NULL;
 	}
+	if (req->obj) {
+		clear_object(req->obj);
+		free(req->obj);
+		req->obj = NULL;
+	}
 	req->next_hdr = NULL;
 	req->op = S3_OP_Unknown;
 }
@@ -95,10 +100,11 @@ static int read_request(struct s3gw_request *req, char *buf, size_t len,
 
 	if (req->fd) {
 		int ret;
+		size_t off = 0;
 
 		memset(&msg, 0, sizeof(msg));
-		iov.iov_base = buf;
-		iov.iov_len = len;
+		iov.iov_base = buf + off;
+		iov.iov_len = len - off;
 		msg.msg_iov = &iov;
 		msg.msg_iovlen = 1;
 		ret = recvmsg(req->fd, &msg, 0);
@@ -117,15 +123,20 @@ static int write_request(struct s3gw_request *req, char *buf, size_t len,
 
 	if (req->fd) {
 		int ret;
+		size_t off = 0;
 
-		memset(&msg, 0, sizeof(msg));
-		iov.iov_base = buf;
-		iov.iov_len = len;
-		msg.msg_iov = &iov;
-		msg.msg_iovlen = 1;
-		ret = sendmsg(req->fd, &msg, 0);
-		if (ret > 0)
-			*outlen = ret;
+		while (off < len) {
+			memset(&msg, 0, sizeof(msg));
+			iov.iov_base = buf + off;
+			iov.iov_len = len - off;
+			msg.msg_iov = &iov;
+			msg.msg_iovlen = 1;
+			ret = sendmsg(req->fd, &msg, 0);
+			if (ret <= 0)
+				break;
+			off += ret;
+			*outlen = off;
+		}
 		return ret;
 	}
 	return SSL_write_ex(req->ssl, buf, len, outlen);
@@ -143,10 +154,10 @@ size_t handle_request(struct s3gw_request *req)
 
 	setup_parser(&settings);
 
-next:
 	ret = read_request(req, buf, sizeof(buf), &nread);
 	if (ret < 0) {
-		fprintf(stderr, "Error %d reading request\n", errno);
+		fprintf(stderr, "Error %d after reading %ld bytes\n",
+			errno, nread);
 		return 0;
 	}
 	if (ret == 0) {
@@ -155,7 +166,7 @@ next:
 			nread);
 		return 0;
 	}
-
+	printf("Read %lu bytes\n", nread);
 	ret = http_parser_execute(http, &settings,
 				  (const char *)buf, nread);
 	if (ret == 0 || http->http_errno) {
@@ -173,6 +184,19 @@ next:
 		req->payload = malloc(req->payload_len);
 		ret = read_request(req, (char *)req->payload,
 				   req->payload_len, &plen);
+		nread += plen;
+		if (ret < 0) {
+			fprintf(stderr,
+				"Error %d after reading %lu bytes payload\n",
+				errno, plen);
+			return nread;
+		}
+		if (ret == 0) {
+			fprintf(stderr,
+				"Connection closed after reading %lu bytes payload\n",
+				plen);
+			return nread;
+		}
 	}
 	resp = format_response(req, &resp_len);
 	if (!resp) {
@@ -181,37 +205,43 @@ next:
 	}
 	printf("Response (len %d + %lu):\n%s\n",
 	       resp_len, req->obj ? req->obj->size : 0, resp);
-	while (total < resp_len) {
-		ret = write_request(req, resp + total, resp_len - total,
-				    &nwritten);
+	ret = write_request(req, resp, resp_len, &nwritten);
+	if (ret < 0) {
+		fprintf(stderr, "Error %d after writing %lu response bytes\n",
+			errno, nwritten);
+		total = nwritten;
+		goto out_free;
+	}
+	if (ret == 0) {
+		fprintf(stderr,
+			"Connection closed after writing %lu response bytes\n",
+			nwritten);
+		total = nwritten;
+		goto out_free;
+	}
+	printf("Wrote %lu response bytes\n", nwritten);
+	total += nwritten;
+	if (req->obj) {
+		ret = write_request(req, req->obj->map,
+				    req->obj->size, &nwritten);
 		if (ret < 0) {
-			fprintf(stderr, "Error %d writing response\n", errno);
-			break;
-		}
-		if (ret == 0) {
 			fprintf(stderr,
-				"Connection closed after writing %ld bytes\n",
-				total);
-			break;
+				"Error %d after writing %lu response bytes\n",
+				errno, nwritten);
+		} else if (ret == 0) {
+			fprintf(stderr,
+				"Connection closed after writing %lu payload bytes\n",
+				nwritten);
+		} else {
+			printf("Wrote %lu payload bytes\n", nwritten);
 		}
 		total += nwritten;
+		clear_object(req->obj);
+		free(req->obj);
+		req->obj = NULL;
 	}
-	if (req->obj) {
-		size_t off = 0;
-
-		while (off < req->obj->size) {
-			ret = write_request(req, req->obj->map + off,
-					    req->obj->size - off, &nwritten);
-			if (ret > 0) {
-				off += nwritten;
-				total += nwritten;
-			}
-		}
-	}
+out_free:
 	free(resp);
-
-	if (req->status == HTTP_STATUS_CONTINUE)
-		goto next;
 	return total;
 }
 
