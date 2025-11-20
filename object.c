@@ -43,7 +43,7 @@ char *delete_object(struct s3gw_request *req, int *outlen)
 	int ret;
 
 	req->status = HTTP_STATUS_NO_CONTENT;
-	ret = dir_delete_object(req, req->object);
+	ret = dir_delete_object(req, req->bucket, req->object);
 	if (ret < 0) {
 		switch (ret) {
 		case -EEXIST:
@@ -142,7 +142,7 @@ char *delete_objects(struct s3gw_request *req, int *outlen)
 	list_for_each_entry_safe(obj, tmp, &top, list) {
 		if (obj->error)
 			continue;
-		ret = dir_delete_object(req, obj->key);
+		ret = dir_delete_object(req, req->bucket, obj->key);
 		if (ret < 0) {
 			obj->error = ret;
 			continue;
@@ -213,7 +213,7 @@ char *list_objects(struct s3gw_request *req, int *outlen)
 	unsigned long max_keys = 0;
 
 	INIT_LINKED_LIST(&top);
-	num = dir_find_objects(req, &top, prefix);
+	num = dir_find_objects(req, req->bucket, &top, prefix);
 	if (num < 0) {
 		if (num == -EPERM)
 			req->status = HTTP_STATUS_FORBIDDEN;

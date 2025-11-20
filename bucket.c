@@ -50,7 +50,7 @@ char *create_bucket(struct s3gw_request *req, int *outlen)
 		req->status = HTTP_STATUS_FORBIDDEN;
 		return NULL;
 	}
-	ret = dir_create_bucket(req);
+	ret = dir_create_bucket(req, req->bucket);
 	if (ret < 0) {
 		req->status = HTTP_STATUS_BAD_REQUEST;
 		if (ret == -EEXIST) {
@@ -91,7 +91,7 @@ char *delete_bucket(struct s3gw_request *req, int *outlen)
 	char time_str[64];
 	int ret;
 
-	ret = dir_delete_bucket(req);
+	ret = dir_delete_bucket(req, req->bucket);
 	if (ret < 0) {
 		switch (ret) {
 		case -EEXIST:

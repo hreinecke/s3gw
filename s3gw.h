@@ -90,14 +90,15 @@ const char *fetch_request_query(struct s3gw_request *req,
 /* dir.c */
 int create_owner_secret(struct s3gw_ctx *ctx, char *owner_id, char *secret);
 char *get_owner_secret(struct s3gw_ctx *ctx, char *owner_id, int *out_len);
-int dir_create_bucket(struct s3gw_request *req);
-int dir_delete_bucket(struct s3gw_request *req);
+int dir_create_bucket(struct s3gw_request *req, const char *bucket);
+int dir_delete_bucket(struct s3gw_request *req, const char *bucket);
 int dir_find_buckets(struct s3gw_request *req, struct linked_list *head);
 int dir_fetch_object(struct s3gw_request *req, struct s3gw_object *obj,
 		     const char *bucket, const char *object);
-int dir_delete_object(struct s3gw_request *req, const char *object);
-int dir_find_objects(struct s3gw_request *req, struct linked_list *head,
-		     char *prefix);
+int dir_delete_object(struct s3gw_request *req, const char *bucket,
+		      const char *object);
+int dir_find_objects(struct s3gw_request *req, const char *bucket,
+		     struct linked_list *head, char *prefix);
 int dir_splice_objects(struct s3gw_request *req,
 		       char *s_bucket, char *s_obj,
 		       char *d_bucket, char *d_obj);

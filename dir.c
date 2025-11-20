@@ -98,7 +98,7 @@ char *get_owner_secret(struct s3gw_ctx *ctx, char *owner_id, int *out_len)
 	return value;
 }
 
-int dir_create_bucket(struct s3gw_request *req)
+int dir_create_bucket(struct s3gw_request *req, const char *bucket)
 {
 	char *pathname;
 	int ret;
@@ -107,12 +107,12 @@ int dir_create_bucket(struct s3gw_request *req)
 		fprintf(stderr, "No owner set\n");
 		return -EINVAL;
 	}
-	if (!req->bucket) {
+	if (!bucket) {
 		fprintf(stderr, "No bucket specified\n");
 		return -EINVAL;
 	}
 	ret = asprintf(&pathname, "%s/%s/%s",
-		       req->ctx->base_dir, req->owner, req->bucket);
+		       req->ctx->base_dir, req->owner, bucket);
 	if (ret < 0)
 		return -errno;
 
@@ -127,7 +127,7 @@ int dir_create_bucket(struct s3gw_request *req)
 	return ret;
 }
 
-int dir_delete_bucket(struct s3gw_request *req)
+int dir_delete_bucket(struct s3gw_request *req, const char *bucket)
 {
 	char *pathname;
 	int ret;
@@ -136,12 +136,12 @@ int dir_delete_bucket(struct s3gw_request *req)
 		fprintf(stderr, "No owner set\n");
 		return -EINVAL;
 	}
-	if (!req->bucket) {
+	if (!bucket) {
 		fprintf(stderr, "No bucket specified\n");
 		return -EINVAL;
 	}
 	ret = asprintf(&pathname, "%s/%s/%s",
-		       req->ctx->base_dir, req->owner, req->bucket);
+		       req->ctx->base_dir, req->owner, bucket);
 	if (ret < 0)
 		return -errno;
 
@@ -422,16 +422,15 @@ out_close_source:
 	return ret;
 }
 
-int dir_delete_object(struct s3gw_request *req, const char *object)
+int dir_delete_object(struct s3gw_request *req, const char *bucket,
+		      const char *object)
 {
 	char *pathname;
 	int ret;
 
 	ret = asprintf(&pathname, "%s/%s/%s/%s",
-		       req->ctx->base_dir,
-		       req->owner,
-		       req->bucket,
-		       object);
+		       req->ctx->base_dir, req->owner,
+		       bucket, object);
 	if (ret < 0)
 		return -ENOMEM;
 
@@ -445,8 +444,8 @@ int dir_delete_object(struct s3gw_request *req, const char *object)
 	return ret;
 }
 
-int dir_find_objects(struct s3gw_request *req, struct linked_list *head,
-		     char *prefix)
+int dir_find_objects(struct s3gw_request *req, const char *bucket,
+		     struct linked_list *head, char *prefix)
 {
 	char *dirname;
 	struct s3gw_object *obj = NULL;
@@ -456,8 +455,7 @@ int dir_find_objects(struct s3gw_request *req, struct linked_list *head,
 
 	ret = asprintf(&dirname, "%s/%s/%s",
 		       req->ctx->base_dir,
-		       req->owner,
-		       req->bucket);
+		       req->owner, bucket);
 	if (ret < 0)
 		return -ENOMEM;
 	sd = opendir(dirname);
