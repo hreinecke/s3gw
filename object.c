@@ -16,21 +16,22 @@
 static xmlChar xmlns[] =
 	"http://s3.amazonaws.com/doc/2006-03-01/";
 
-char *create_object(struct s3gw_request *req, int *outlen)
+char *create_object(struct s3gw_request *req, struct s3gw_response *resp,
+		    int *outlen)
 {
 	struct s3gw_object obj;
 	int ret;
 
 	memset(&obj, 0, sizeof(obj));
-	req->status = HTTP_STATUS_OK;
+	resp->status = HTTP_STATUS_OK;
 	ret = dir_fetch_object(req, &obj, req->bucket, req->object);
 	if (ret < 0) {
 		switch (ret) {
 		case -EEXIST:
-			req->status = HTTP_STATUS_CONFLICT;
+			resp->status = HTTP_STATUS_CONFLICT;
 			break;
 		default:
-			req->status = HTTP_STATUS_BAD_REQUEST;
+			resp->status = HTTP_STATUS_BAD_REQUEST;
 			break;
 		}
 	}
@@ -38,19 +39,20 @@ char *create_object(struct s3gw_request *req, int *outlen)
 	return NULL;
 }
 
-char *delete_object(struct s3gw_request *req, int *outlen)
+char *delete_object(struct s3gw_request *req, struct s3gw_response *resp,
+		    int *outlen)
 {
 	int ret;
 
-	req->status = HTTP_STATUS_NO_CONTENT;
+	resp->status = HTTP_STATUS_NO_CONTENT;
 	ret = dir_delete_object(req, req->bucket, req->object);
 	if (ret < 0) {
 		switch (ret) {
 		case -EEXIST:
-			req->status = HTTP_STATUS_CONFLICT;
+			resp->status = HTTP_STATUS_CONFLICT;
 			break;
 		default:
-			req->status = HTTP_STATUS_BAD_REQUEST;
+			resp->status = HTTP_STATUS_BAD_REQUEST;
 			break;
 		}
 	}
@@ -112,7 +114,8 @@ void xml_delete_list(struct s3gw_request *req, xmlNode *root,
 	}
 }
 
-char *delete_objects(struct s3gw_request *req, int *outlen)
+char *delete_objects(struct s3gw_request *req, struct s3gw_response *resp,
+		     int *outlen)
 {
 	struct linked_list top;
 	struct s3gw_object *obj, *tmp;
@@ -125,7 +128,7 @@ char *delete_objects(struct s3gw_request *req, int *outlen)
 
 	INIT_LINKED_LIST(&top);
 	if (!req->xml) {
-		req->status = HTTP_STATUS_NOT_FOUND;
+		resp->status = HTTP_STATUS_NOT_FOUND;
 		return NULL;
 	}
 	root = xmlDocGetRootElement(req->xml);
@@ -183,11 +186,11 @@ char *delete_objects(struct s3gw_request *req, int *outlen)
 	}
 	xmlDocDumpMemory(doc, &xml, &xml_len);
 	xmlFreeDoc(doc);
-	req->status = HTTP_STATUS_OK;
+	resp->status = HTTP_STATUS_OK;
 
 	ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n"
 		       "Content-Length: %d\r\n\r\n%s",
-		       req->status, http_status_str(req->status),
+		       resp->status, http_status_str(resp->status),
 		       xml_len, xml);
 	if (ret > 0)
 		*outlen = ret;
@@ -198,7 +201,8 @@ char *delete_objects(struct s3gw_request *req, int *outlen)
 	return buf;
 }
 
-char *list_objects(struct s3gw_request *req, int *outlen)
+char *list_objects(struct s3gw_request *req, struct s3gw_response *resp,
+		   int *outlen)
 {
 	struct linked_list top;
 	struct s3gw_object *o, *t;
@@ -216,9 +220,9 @@ char *list_objects(struct s3gw_request *req, int *outlen)
 	num = dir_find_objects(req, req->bucket, &top, prefix);
 	if (num < 0) {
 		if (num == -EPERM)
-			req->status = HTTP_STATUS_FORBIDDEN;
+			resp->status = HTTP_STATUS_FORBIDDEN;
 		else
-			req->status = HTTP_STATUS_NOT_FOUND;
+			resp->status = HTTP_STATUS_NOT_FOUND;
 		return NULL;
 	}
 	printf("found %d objects\n", num);
@@ -296,11 +300,11 @@ char *list_objects(struct s3gw_request *req, int *outlen)
 	free(line);
 	xmlDocDumpMemory(doc, &xml, &xml_len);
 	xmlFreeDoc(doc);
-	req->status = HTTP_STATUS_OK;
+	resp->status = HTTP_STATUS_OK;
 
 	ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n"
 		       "Content-Length: %d\r\n\r\n%s",
-		       req->status, http_status_str(req->status),
+		       resp->status, http_status_str(resp->status),
 		       xml_len, xml);
 	if (ret < 0) {
 		free(xml);
@@ -311,7 +315,8 @@ char *list_objects(struct s3gw_request *req, int *outlen)
 	return buf;
 }
 
-char *get_object(struct s3gw_request *req, int *outlen)
+char *get_object(struct s3gw_request *req, struct s3gw_response *resp,
+		 int *outlen)
 {
 	struct s3gw_object *obj;
 	char line[64];
@@ -324,44 +329,44 @@ char *get_object(struct s3gw_request *req, int *outlen)
 
 	obj = malloc(sizeof(*obj));
 	if (!obj) {
-		req->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
+		resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
 		return NULL;
 	}
 	ret = dir_fetch_object(req, obj, req->bucket, req->object);
 	if (ret < 0) {
 		if (ret == -EPERM)
-			req->status = HTTP_STATUS_FORBIDDEN;
+			resp->status = HTTP_STATUS_FORBIDDEN;
 		else
-			req->status = HTTP_STATUS_NOT_FOUND;
+			resp->status = HTTP_STATUS_NOT_FOUND;
 		goto out_free_obj;
 	}
-	req->status = HTTP_STATUS_OK;
+	resp->status = HTTP_STATUS_OK;
 
 	tm = localtime(&obj->mtime);
 	strftime(line, sizeof(line), "%FT%T%z", tm);
-	put_response_header(req, "Date", line);
+	put_response_header(resp, "Date", line);
 	tm = localtime(&now);
 	strftime(line, 64, "%FT%T%z", tm);
-	put_response_header(req, "Last-Modified", line);
+	put_response_header(resp, "Last-Modified", line);
 	sprintf(line, "%lu", obj->size);
-	put_response_header(req, "Size", line);
+	put_response_header(resp, "Size", line);
 	etag = bin2hex(obj->etag, 16, &etag_len);
 	if (!etag) {
-		req->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
+		resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
 		goto out_free_obj;
 	}
-	put_response_header(req, "ETag", etag);
-	put_response_header(req, "Connection", "close");
-	put_response_header(req, "Server", "s3gw");
-	buf = gen_response_header(req, &ret);
+	put_response_header(resp, "ETag", etag);
+	put_response_header(resp, "Connection", "close");
+	put_response_header(resp, "Server", "s3gw");
+	buf = gen_response_header(resp, &ret);
 	if (buf) {
 		if (req->op == S3_OP_GetObject) {
-			req->obj = obj;
+			resp->obj = obj;
 			obj = NULL;
 		}
 		*outlen = ret;
 	} else {
-		req->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
+		resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
 	}
 	free(etag);
 out_free_obj:
@@ -379,7 +384,8 @@ static char copy_object_template[]=
 	"Connection: close\r\n"
 	"Server: s3gw\r\n\r\n%s";
 
-char *copy_object(struct s3gw_request *req, const char *source, int *outlen)
+char *copy_object(struct s3gw_request *req, struct s3gw_response *resp,
+		  const char *source, int *outlen)
 {
 	struct s3gw_object *obj;
 	char *bucket, *b, *o, *e, *save;
@@ -397,7 +403,7 @@ char *copy_object(struct s3gw_request *req, const char *source, int *outlen)
 
 	obj = malloc(sizeof(*obj));
 	if (!obj) {
-		req->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
+		resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
 		return NULL;
 	}
 	memset(obj, 0, sizeof(*obj));
@@ -405,7 +411,7 @@ char *copy_object(struct s3gw_request *req, const char *source, int *outlen)
 	bucket = strdup(source);
 	b = strtok_r(bucket, "/", &save);
 	if (!b) {
-		req->status = HTTP_STATUS_NOT_FOUND;
+		resp->status = HTTP_STATUS_NOT_FOUND;
 		free(bucket);
 		goto out_free_obj;
 	}
@@ -416,14 +422,14 @@ char *copy_object(struct s3gw_request *req, const char *source, int *outlen)
 	}
 	e = strtok_r(NULL, "/", &save);
 	if (e) {
-		req->status = HTTP_STATUS_NOT_FOUND;
+		resp->status = HTTP_STATUS_NOT_FOUND;
 		free(bucket);
 		goto out_free_obj;
 	}
 
 	ret = dir_splice_objects(req, b, o, req->bucket, req->object);
 	if (ret < 0) {
-		req->status = HTTP_STATUS_NOT_FOUND;
+		resp->status = HTTP_STATUS_NOT_FOUND;
 		free(bucket);
 		goto out_free_obj;
 	}
@@ -431,12 +437,12 @@ char *copy_object(struct s3gw_request *req, const char *source, int *outlen)
 	ret = dir_fetch_object(req, obj, req->bucket, req->object);
 	if (ret < 0) {
 		if (ret == -EPERM)
-			req->status = HTTP_STATUS_FORBIDDEN;
+			resp->status = HTTP_STATUS_FORBIDDEN;
 		else
-			req->status = HTTP_STATUS_NOT_FOUND;
+			resp->status = HTTP_STATUS_NOT_FOUND;
 		goto out_free_obj;
 	}
-	req->status = HTTP_STATUS_OK;
+	resp->status = HTTP_STATUS_OK;
 
 	tm = localtime(&obj->mtime);
 	strftime(mod_time_str, 64, "%FT%T%z", tm);
@@ -444,7 +450,7 @@ char *copy_object(struct s3gw_request *req, const char *source, int *outlen)
 	strftime(cur_time_str, 64, "%FT%T%z", tm);
 	etag = bin2hex(obj->etag, 16, &etag_len);
 	if (!etag) {
-		req->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
+		resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
 		goto out_free_obj;
 	}
 
@@ -464,12 +470,12 @@ char *copy_object(struct s3gw_request *req, const char *source, int *outlen)
 	xmlFreeDoc(doc);
 
 	ret = asprintf(&buf, copy_object_template,
-		       req->status, http_status_str(req->status),
+		       resp->status, http_status_str(resp->status),
 		       cur_time_str, xml_len, xml);
 	if (ret > 0)
 		*outlen = ret;
 	else {
-		req->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
+		resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
 		buf = NULL;
 	}
 out_free_obj:

@@ -61,13 +61,10 @@ struct s3gw_request {
 	xmlDoc *xml;
 	unsigned char *payload;
 	size_t payload_len;
-	struct s3gw_object *obj;
-	enum http_status status;
 	enum s3_api_ops op;
 	struct linked_list hdr_list;
 	struct linked_list auth_list;
 	struct linked_list query_list;
-	struct linked_list resp_hdr_list;
 	void *next_hdr;
 	char *owner;
 	char *region;
@@ -78,12 +75,20 @@ struct s3gw_request {
 	char *object;
 };
 
+struct s3gw_response {
+	struct s3gw_request *req;
+	enum http_status status;
+	struct linked_list resp_hdr_list;
+	struct s3gw_object *obj;
+};
+
 void setup_parser(http_parser_settings *settings);
 
 /* request.c */
 void init_request(struct s3gw_ctx *ctx, struct s3gw_request *req);
 void reset_request(struct s3gw_request *req);
-size_t handle_request(struct s3gw_request *req);
+void reset_response(struct s3gw_response *resp);
+size_t handle_request(struct s3gw_request *req, struct s3gw_response *resp);
 char *fetch_request_header(struct s3gw_request *req, const char *key, int *len);
 const char *fetch_request_query(struct s3gw_request *req,
 				const char *key, int *len);
@@ -106,25 +111,38 @@ int dir_splice_objects(struct s3gw_request *req,
 
 /* bucket.c */
 xmlNode *find_node(xmlNode *top, const xmlChar *key);
-char *create_bucket(struct s3gw_request *req, int *outlen);
-char *delete_bucket(struct s3gw_request *req, int *outlen);
-char *list_buckets(struct s3gw_request *req, int *outlen);
-char *check_bucket(struct s3gw_request *req, int *outlen);
-char *bucket_versioning(struct s3gw_request *req, int *outlen);
+char *create_bucket(struct s3gw_request *req, struct s3gw_response *resp,
+		    int *outlen);
+char *delete_bucket(struct s3gw_request *req,  struct s3gw_response *resp,
+		    int *outlen);
+char *list_buckets(struct s3gw_request *req,  struct s3gw_response *resp,
+		   int *outlen);
+char *check_bucket(struct s3gw_request *req,  struct s3gw_response *resp,
+		   int *outlen);
+char *bucket_versioning(struct s3gw_request *req,  struct s3gw_response *resp,
+			int *outlen);
 
 /* object.c */
-char *create_object(struct s3gw_request *req, int *outlen);
-char *delete_object(struct s3gw_request *req, int *outlen);
-char *list_objects(struct s3gw_request *req, int *outlen);
-char *get_object(struct s3gw_request *req, int *outlen);
-char *copy_object(struct s3gw_request *req, const char *source, int *outlen);
-char *delete_objects(struct s3gw_request *req, int *outlen);
+char *create_object(struct s3gw_request *req,  struct s3gw_response *resp,
+		    int *outlen);
+char *delete_object(struct s3gw_request *req,  struct s3gw_response *resp,
+		    int *outlen);
+char *list_objects(struct s3gw_request *req,  struct s3gw_response *resp,
+		   int *outlen);
+char *get_object(struct s3gw_request *req,  struct s3gw_response *resp,
+		 int *outlen);
+char *copy_object(struct s3gw_request *req,  struct s3gw_response *resp,
+		  const char *source, int *outlen);
+char *delete_objects(struct s3gw_request *req,  struct s3gw_response *resp,
+		     int *outlen);
 void clear_object(struct s3gw_object *obj);
 
 /* format.c */
-int put_response_header(struct s3gw_request *req, const char *key, char *value);
-char *gen_response_header(struct s3gw_request *req, int *outlen);
-char *format_response(struct s3gw_request *req, int *outlen);
+int put_response_header(struct s3gw_response *resp, const char *key,
+			char *value);
+char *gen_response_header(struct s3gw_response *resp, int *outlen);
+char *format_response(struct s3gw_request *req, struct s3gw_response *resp,
+		      int *outlen);
 
 void tls_loop(struct s3gw_ctx *ctx);
 void tcp_loop(struct s3gw_ctx *ctx);

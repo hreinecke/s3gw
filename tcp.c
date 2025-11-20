@@ -163,6 +163,7 @@ void tcp_loop(struct s3gw_ctx *ctx)
 	/* Wait for incoming connection */
 	for (;;) {
 		struct s3gw_request req;
+		struct s3gw_response resp;
 		size_t total;
 
 		if (tcp_wait_for_connection(ctx) <= 0) {
@@ -171,11 +172,15 @@ void tcp_loop(struct s3gw_ctx *ctx)
 		}
 
 		init_request(ctx, &req);
+		memset(&resp, 0, sizeof(resp));
+		resp.req = &req;
+		resp.status = HTTP_STATUS_NOT_FOUND;
+		INIT_LINKED_LIST(&resp.resp_hdr_list);
 
 		if (tcp_accept(ctx, &req) <= 0)
 			continue;
 
-		total = handle_request(&req);
+		total = handle_request(&req, &resp);
 
 		fprintf(stderr, "Client connection closed, %zu bytes sent\n",
 			total);

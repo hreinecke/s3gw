@@ -11,7 +11,8 @@
 #include "s3_api.h"
 #include "s3gw.h"
 
-int put_response_header(struct s3gw_request *req, const char *key, char *value)
+int put_response_header(struct s3gw_response *resp, const char *key,
+			char *value)
 {
 	struct s3gw_header *hdr;
 
@@ -22,19 +23,19 @@ int put_response_header(struct s3gw_request *req, const char *key, char *value)
 	hdr->key = strdup(key);
 	if (value)
 		hdr->value = strdup(value);
-	list_add(&hdr->list, &req->resp_hdr_list);
+	list_add(&hdr->list, &resp->resp_hdr_list);
 	return 0;
 }
 
-char *gen_response_header(struct s3gw_request *req, int *outlen)
+char *gen_response_header(struct s3gw_response *resp, int *outlen)
 {
 	struct s3gw_header *hdr;
 	char *header;
 	size_t len, off;
 	int ret;
 
-	len = strlen(http_status_str(req->status)) + 20;
-	list_for_each_entry(hdr, &req->resp_hdr_list, list) {
+	len = strlen(http_status_str(resp->status)) + 20;
+	list_for_each_entry(hdr, &resp->resp_hdr_list, list) {
 		len += strlen(hdr->key);
 		if (hdr->value) {
 			len += strlen(hdr->value) + 2;
@@ -47,13 +48,13 @@ char *gen_response_header(struct s3gw_request *req, int *outlen)
 
 	memset(header, 0, len + 1);
 	ret = sprintf(header, "HTTP/1.1 %d %s\r\n",
-		     req->status, http_status_str(req->status));
+		     resp->status, http_status_str(resp->status));
 	if (ret < 0) {
 		free(header);
 		return NULL;
 	}
 	off = ret;
-	list_for_each_entry(hdr, &req->resp_hdr_list, list) {
+	list_for_each_entry(hdr, &resp->resp_hdr_list, list) {
 		if (hdr->value)
 			ret = sprintf(header + off,
 				       "%s: %s\r\n",
@@ -92,7 +93,29 @@ static char *put_status(enum http_status s, const char *data, int *outlen)
 	return buf;
 }
 
-char *format_response(struct s3gw_request *req, int *outlen)
+struct s3gw_op_handler {
+	enum s3_api_ops op;
+	char *(*func)(struct s3gw_request *req, struct s3gw_response *resp,
+			 int *outlen);
+};
+
+static struct s3gw_op_handler op_handler_list[] = {
+	{ S3_OP_CreateBucket, create_bucket },
+	{ S3_OP_DeleteBucket, delete_bucket },
+	{ S3_OP_ListBuckets, list_buckets },
+	{ S3_OP_HeadBucket, check_bucket },
+	{ S3_OP_GetBucketVersioning, bucket_versioning },
+	{ S3_OP_PutObject, create_object },
+	{ S3_OP_DeleteObject, delete_object },
+	{ S3_OP_DeleteObjects, delete_objects },
+	{ S3_OP_ListObjects, list_objects },
+	{ S3_OP_GetObject, get_object },
+	{ S3_OP_HeadObject, get_object },
+	{ S3_OP_Unknown, NULL },
+};
+
+char *format_response(struct s3gw_request *req, struct s3gw_response *resp,
+		      int *outlen)
 {
 	char *buf = NULL, *source = NULL;
 	int len;
@@ -117,49 +140,26 @@ char *format_response(struct s3gw_request *req, int *outlen)
 		}
 	}
 
-	switch (req->op) {
-	case S3_OP_CreateBucket:
-		buf = create_bucket(req, outlen);
-		break;
-	case S3_OP_DeleteBucket:
-		buf = delete_bucket(req, outlen);
-		break;
-	case S3_OP_ListBuckets:
-		buf = list_buckets(req, outlen);
-		break;
-	case S3_OP_HeadBucket:
-		buf = check_bucket(req, outlen);
-		break;
-	case S3_OP_GetBucketVersioning:
-		buf = bucket_versioning(req, outlen);
-		break;
-	case S3_OP_PutObject:
-		buf = create_object(req, outlen);
-		break;
-	case S3_OP_DeleteObject:
-		buf = delete_object(req, outlen);
-		break;
-	case S3_OP_DeleteObjects:
-		buf = delete_objects(req, outlen);
-		break;
-	case S3_OP_ListObjects:
-		buf = list_objects(req, outlen);
-		break;
-	case S3_OP_GetObject:
-		buf = get_object(req, outlen);
-		break;
-	case S3_OP_HeadObject:
-		buf = get_object(req, outlen);
-		break;
-	case S3_OP_CopyObject:
-		buf = copy_object(req, source, outlen);
-		break;
-	default:
-		fprintf(stderr, "Invalid op %d\n", req->op);
-		req->status = HTTP_STATUS_NOT_IMPLEMENTED;
-		break;
+	if (req->op == S3_OP_CopyObject) {
+		buf = copy_object(req, resp, source, outlen);
+	} else {
+		struct s3gw_op_handler *op_handler = NULL;
+		int i;
+
+		for (i = 0; i < ARRAY_SIZE(op_handler_list); i++) {
+			if (op_handler_list[i].op == req->op) {
+				op_handler = &op_handler_list[i];
+				break;
+			}
+		}
+		if (op_handler && op_handler->func) {
+			buf = op_handler->func(req, resp, outlen);
+		} else {
+			fprintf(stderr, "Invalid op %d\n", req->op);
+			resp->status = HTTP_STATUS_NOT_IMPLEMENTED;
+		}
 	}
 	if (!buf)
-		buf = put_status(req->status, NULL, outlen);
+		buf = put_status(resp->status, NULL, outlen);
 	return buf;
 }

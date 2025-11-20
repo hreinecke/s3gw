@@ -17,7 +17,6 @@ void init_request(struct s3gw_ctx *ctx, struct s3gw_request *req)
 	INIT_LINKED_LIST(&req->hdr_list);
 	INIT_LINKED_LIST(&req->auth_list);
 	INIT_LINKED_LIST(&req->query_list);
-	INIT_LINKED_LIST(&req->resp_hdr_list);
 	req->op = S3_OP_Unknown;
 	http_parser_init(&req->http, HTTP_REQUEST);
 	req->http.data = req;
@@ -66,13 +65,6 @@ void reset_request(struct s3gw_request *req)
 		}
 		free(hdr);
 	}
-	list_for_each_entry_safe(hdr, tmp, &req->resp_hdr_list, list) {
-		list_del_init(&hdr->list);
-		if (hdr->value)
-			free(hdr->value);
-		free(hdr->key);
-		free(hdr);
-	}
 	if (req->owner) {
 		free(req->owner);
 		req->owner = NULL;
@@ -83,13 +75,27 @@ void reset_request(struct s3gw_request *req)
 		free(req->payload);
 		req->payload = NULL;
 	}
-	if (req->obj) {
-		clear_object(req->obj);
-		free(req->obj);
-		req->obj = NULL;
-	}
 	req->next_hdr = NULL;
 	req->op = S3_OP_Unknown;
+}
+
+void reset_response(struct s3gw_response *resp)
+{
+	struct s3gw_header *hdr, *tmp;
+
+	list_for_each_entry_safe(hdr, tmp, &resp->resp_hdr_list, list) {
+		list_del_init(&hdr->list);
+		if (hdr->value)
+			free(hdr->value);
+		free(hdr->key);
+		free(hdr);
+	}
+	if (resp->obj) {
+		clear_object(resp->obj);
+		free(resp->obj);
+		resp->obj = NULL;
+	}
+	resp->status = HTTP_STATUS_NOT_FOUND;
 }
 
 static int read_request(struct s3gw_request *req, char *buf, size_t len,
@@ -142,9 +148,9 @@ static int write_request(struct s3gw_request *req, char *buf, size_t len,
 	return SSL_write_ex(req->ssl, buf, len, outlen);
 }
 
-size_t handle_request(struct s3gw_request *req)
+size_t handle_request(struct s3gw_request *req, struct s3gw_response *resp)
 {
-	char *resp, buf[8192];
+	char *resp_hdr, buf[8192];
 	http_parser *http = &req->http;
 	http_parser_settings settings;
 	size_t nread;
@@ -198,14 +204,14 @@ size_t handle_request(struct s3gw_request *req)
 			return nread;
 		}
 	}
-	resp = format_response(req, &resp_len);
-	if (!resp) {
+	resp_hdr = format_response(req, resp, &resp_len);
+	if (!resp_hdr) {
 		fprintf(stderr, "Error formatting response\n");
 		return 0;
 	}
 	printf("Response (len %d + %lu):\n%s\n",
-	       resp_len, req->obj ? req->obj->size : 0, resp);
-	ret = write_request(req, resp, resp_len, &nwritten);
+	       resp_len, resp->obj ? resp->obj->size : 0, resp_hdr);
+	ret = write_request(req, resp_hdr, resp_len, &nwritten);
 	if (ret < 0) {
 		fprintf(stderr, "Error %d after writing %lu response bytes\n",
 			errno, nwritten);
@@ -221,9 +227,9 @@ size_t handle_request(struct s3gw_request *req)
 	}
 	printf("Wrote %lu response bytes\n", nwritten);
 	total += nwritten;
-	if (req->obj) {
-		ret = write_request(req, req->obj->map,
-				    req->obj->size, &nwritten);
+	if (resp->obj) {
+		ret = write_request(req, resp->obj->map,
+				    resp->obj->size, &nwritten);
 		if (ret < 0) {
 			fprintf(stderr,
 				"Error %d after writing %lu response bytes\n",
@@ -236,12 +242,12 @@ size_t handle_request(struct s3gw_request *req)
 			printf("Wrote %lu payload bytes\n", nwritten);
 		}
 		total += nwritten;
-		clear_object(req->obj);
-		free(req->obj);
-		req->obj = NULL;
+		clear_object(resp->obj);
+		free(resp->obj);
+		resp->obj = NULL;
 	}
 out_free:
-	free(resp);
+	free(resp_hdr);
 	return total;
 }
 

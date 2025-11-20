@@ -24,7 +24,8 @@ xmlNode *find_node(xmlNode *top, const xmlChar *key)
 	return NULL;
 }
 
-char *create_bucket(struct s3gw_request *req, int *outlen)
+char *create_bucket(struct s3gw_request *req, struct s3gw_response *resp,
+		    int *outlen)
 {
 	char *buf;
 	const char *location = NULL;
@@ -47,43 +48,44 @@ char *create_bucket(struct s3gw_request *req, int *outlen)
 	if (location && !strcmp(req->region, location)) {
 		fprintf(stderr, "Cannot create bucket in location '%s'\n",
 			location);
-		req->status = HTTP_STATUS_FORBIDDEN;
+		resp->status = HTTP_STATUS_FORBIDDEN;
 		return NULL;
 	}
 	ret = dir_create_bucket(req, req->bucket);
 	if (ret < 0) {
-		req->status = HTTP_STATUS_BAD_REQUEST;
+		resp->status = HTTP_STATUS_BAD_REQUEST;
 		if (ret == -EEXIST) {
-			req->status = HTTP_STATUS_CONFLICT;
+			resp->status = HTTP_STATUS_CONFLICT;
 		}
 		return NULL;
 	}
-	req->status = HTTP_STATUS_OK;
+	resp->status = HTTP_STATUS_OK;
 	if (location)
 		ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n"
 			       "x-amz-bucket-region: %s\r\n"
 			       "Location: /%s\r\n"
 			       "Content-Length: 0\r\n"
 			       "Connection: close\r\n",
-			       req->status, http_status_str(req->status),
+			       resp->status, http_status_str(resp->status),
 			       req->region, req->bucket);
 	else
 		ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n"
 			       "Location: /%s\r\n"
 			       "Content-Length: 0\r\n"
 			       "Connection: close\r\n",
-			       req->status, http_status_str(req->status),
+			       resp->status, http_status_str(resp->status),
 			       req->bucket);
 	if (ret > 0)
 		*outlen = ret;
 	else {
-		req->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
+		resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
 		buf = NULL;
 	}
 	return buf;
 }
 
-char *delete_bucket(struct s3gw_request *req, int *outlen)
+char *delete_bucket(struct s3gw_request *req, struct s3gw_response *resp,
+		    int *outlen)
 {
 	char *buf;
 	time_t now = time(NULL);
@@ -95,34 +97,38 @@ char *delete_bucket(struct s3gw_request *req, int *outlen)
 	if (ret < 0) {
 		switch (ret) {
 		case -EEXIST:
-			req->status = HTTP_STATUS_CONFLICT;
+			resp->status = HTTP_STATUS_CONFLICT;
 			break;
 		case -ENOENT:
-			req->status = HTTP_STATUS_NOT_FOUND;
+			resp->status = HTTP_STATUS_NOT_FOUND;
+			break;
+		case -ENOTEMPTY:
+			resp->status = HTTP_STATUS_CONFLICT;
 			break;
 		default:
-			req->status = HTTP_STATUS_BAD_REQUEST;
+			resp->status = HTTP_STATUS_BAD_REQUEST;
 			break;
 		}
 		return NULL;
 	}
-	req->status = HTTP_STATUS_NO_CONTENT;
+	resp->status = HTTP_STATUS_NO_CONTENT;
 	tm = localtime(&now);
 	strftime(time_str, 64, "%c", tm);
 	ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n"
 		       "Date: %s\r\n"
 		       "Connection: close\r\n",
-		       req->status, http_status_str(req->status), time_str);
+		       resp->status, http_status_str(resp->status), time_str);
 	if (ret > 0)
 		*outlen = ret;
 	else {
-		req->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
+		resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
 		buf = NULL;
 	}
 	return buf;
 }
 
-char *list_buckets(struct s3gw_request *req, int *outlen)
+char *list_buckets(struct s3gw_request *req, struct s3gw_response *resp,
+		   int *outlen)
 {
 	struct linked_list top;
 	struct s3gw_bucket *b, *t;
@@ -138,11 +144,11 @@ char *list_buckets(struct s3gw_request *req, int *outlen)
 	INIT_LINKED_LIST(&top);
 	ret = dir_find_buckets(req, &top);
 	if (ret < 0 && ret != -EPERM) {
-		req->status = HTTP_STATUS_NOT_FOUND;
+		resp->status = HTTP_STATUS_NOT_FOUND;
 		return NULL;
 	}
 	printf("found %d buckets\n", ret);
-	req->status = HTTP_STATUS_OK;
+	resp->status = HTTP_STATUS_OK;
 
 	/*
 	 * Response format:
@@ -188,12 +194,12 @@ char *list_buckets(struct s3gw_request *req, int *outlen)
 
 	ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n"
 		       "Content-Length: %d\r\n\r\n%s",
-		       req->status, http_status_str(req->status),
+		       resp->status, http_status_str(resp->status),
 		       xml_len, xml);
 	if (ret > 0)
 		*outlen = ret;
 	else {
-		req->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
+		resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
 		buf = NULL;
 	}
 
@@ -201,7 +207,8 @@ char *list_buckets(struct s3gw_request *req, int *outlen)
 	return buf;
 }
 
-char *check_bucket(struct s3gw_request *req, int *outlen)
+char *check_bucket(struct s3gw_request *req, struct s3gw_response *resp,
+		   int *outlen)
 {
 	struct linked_list top;
 	char *buf;
@@ -211,26 +218,27 @@ char *check_bucket(struct s3gw_request *req, int *outlen)
 	ret = dir_find_buckets(req, &top);
 	if (ret < 0) {
 		if (ret == -EPERM)
-			req->status = HTTP_STATUS_FORBIDDEN;
+			resp->status = HTTP_STATUS_FORBIDDEN;
 		else
-			req->status = HTTP_STATUS_NOT_FOUND;
+			resp->status = HTTP_STATUS_NOT_FOUND;
 		return NULL;
 	}
-	req->status = HTTP_STATUS_OK;
+	resp->status = HTTP_STATUS_OK;
 	ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n"
 		       "x-amz-bucket-region: %s\r\n",
-		       req->status, http_status_str(req->status),
+		       resp->status, http_status_str(resp->status),
 		       req->region);
 	if (ret > 0)
 		*outlen = ret;
 	else {
-		req->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
+		resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
 		buf = NULL;
 	}
 	return buf;
 }
 
-char *bucket_versioning(struct s3gw_request *req, int *outlen)
+char *bucket_versioning(struct s3gw_request *req, struct s3gw_response *resp,
+			int *outlen)
 {
 	xmlDoc *doc;
 	xmlNode *node;
@@ -245,16 +253,16 @@ char *bucket_versioning(struct s3gw_request *req, int *outlen)
 	xmlDocSetRootElement(doc, node);
 	xmlDocDumpMemory(doc, &xml, &xml_len);
 	xmlFreeDoc(doc);
-	req->status = HTTP_STATUS_OK;
+	resp->status = HTTP_STATUS_OK;
 
 	ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n"
 		       "Content-Length: %d\r\n\r\n%s",
-		       req->status, http_status_str(req->status),
+		       resp->status, http_status_str(resp->status),
 		       xml_len, xml);
 	if (ret > 0)
 		*outlen = ret;
 	else {
-		req->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
+		resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
 		buf = NULL;
 	}
 

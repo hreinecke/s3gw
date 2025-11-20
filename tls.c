@@ -171,6 +171,7 @@ void tls_loop(struct s3gw_ctx *ctx)
 	/* Wait for incoming connection */
 	for (;;) {
 		struct s3gw_request req;
+		struct s3gw_response resp;
 		size_t total;
 
 		if (tls_wait_for_connection(ctx) <= 0) {
@@ -178,15 +179,16 @@ void tls_loop(struct s3gw_ctx *ctx)
 			continue;
 		}
 
-		memset(&req, 0, sizeof(req));
-		req.op = S3_OP_Unknown;
-		http_parser_init(&req.http, HTTP_REQUEST);
-		req.http.data = &req;
+		init_request(ctx, &req);
+		memset(&resp, 0, sizeof(resp));
+		resp.req = &req;
+		resp.status = HTTP_STATUS_NOT_FOUND;
+		INIT_LINKED_LIST(&resp.resp_hdr_list);
 
 		if (tls_accept(ctx, &req) <= 0)
 			continue;
 
-		total = handle_request(&req);
+		total = handle_request(&req, &resp);
 
 		fprintf(stderr, "Client connection closed, %zu bytes sent\n",
 			total);
