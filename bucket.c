@@ -102,16 +102,13 @@ char *delete_bucket(struct s3gw_request *req, struct s3gw_response *resp,
 	resp->status = HTTP_STATUS_NO_CONTENT;
 	tm = localtime(&now);
 	strftime(time_str, 64, "%c", tm);
-	ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n"
-		       "Date: %s\r\n"
-		       "Connection: close\r\n",
-		       resp->status, http_status_str(resp->status), time_str);
-	if (ret > 0)
+	put_response_header(resp, "Date", time_str);
+	put_response_header(resp, "Connection", "close");
+	buf = gen_response_header(resp, &ret);
+	if (buf)
 		*outlen = ret;
-	else {
+	else
 		resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
-		buf = NULL;
-	}
 	return buf;
 }
 
