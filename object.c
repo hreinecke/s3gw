@@ -227,10 +227,11 @@ char *list_objects(struct s3gw_request *req, struct s3gw_response *resp,
 	xmlNsPtr ns;
 	xmlNode *root_node, *c_node, *o_node;
 	char *buf, *prefix = NULL;
-	xmlChar *xml;
-	char *line;
+	char line[64];
 	int ret, cur = 0, num, line_len, xml_len;
 	unsigned long max_keys = 0;
+	time_t now = time(NULL);
+	struct tm *tm;
 
 	INIT_LINKED_LIST(&top);
 	num = dir_find_objects(req, req->bucket, &top, prefix);
@@ -261,19 +262,18 @@ char *list_objects(struct s3gw_request *req, struct s3gw_response *resp,
 	xmlNewChild(root_node, NULL, (const xmlChar *)"Prefix",
 		    (xmlChar *)prefix);
 	xmlNewChild(root_node, NULL, (const xmlChar *)"Marker", NULL);
-	if (max_keys)
-		asprintf(&line, "%lu", max_keys);
-	else
-		line = NULL;
-	xmlNewChild(root_node, NULL, (const xmlChar *)"MaxKeys",
-		    (xmlChar *)line);
-	free(line);
+	if (max_keys) {
+		sprintf(line, "%lu", max_keys);
+		xmlNewChild(root_node, NULL, (const xmlChar *)"MaxKeys",
+			    (xmlChar *)line);
+	} else
+		xmlNewChild(root_node, NULL, (const xmlChar *)"MaxKeys", NULL);
+
 	xmlNewChild(root_node, NULL, (const xmlChar *)"IsTruncated",
 		    (const xmlChar *)"false");
 	     
 	list_for_each_entry_safe(o, t, &top, list) {
-		char time_str[64];
-		struct tm *tm;
+		char *etag;
 
 		list_del(&o->list);
 		if (max_keys && cur > max_keys) {
@@ -284,20 +284,19 @@ char *list_objects(struct s3gw_request *req, struct s3gw_response *resp,
 		xmlNewChild(c_node, NULL, (const xmlChar *)"Key",
 			    (xmlChar *)o->key);
 		tm = localtime(&o->mtime);
-		strftime(time_str, 64, "%FT%T%z", tm);
+		strftime(line, 64, "%FT%T%z", tm);
 		xmlNewChild(c_node, NULL,
 			    (const xmlChar *)"LastModified",
-			    (xmlChar *)time_str);
-		line = bin2hex(o->etag, 16, (size_t *)&line_len);
+			    (xmlChar *)line);
+		etag = bin2hex(o->etag, 16, (size_t *)&line_len);
 		xmlNewChild(c_node, NULL,
 			    (const xmlChar *)"ETag",
-			    (xmlChar *)line);
-		free(line);
-		line_len = asprintf(&line, "%lu", o->size);
+			    (xmlChar *)etag);
+		free(etag);
+		sprintf(line, "%lu", o->size);
 		xmlNewChild(c_node, NULL,
 			    (const xmlChar *)"Size",
 			    (xmlChar *)line);
-		free(line);
 		xmlNewChild(c_node, NULL,
 			    (const xmlChar *)"StorageClass",
 			    (xmlChar *)"STANDARD");
@@ -310,24 +309,26 @@ char *list_objects(struct s3gw_request *req, struct s3gw_response *resp,
 		free(o);
 		cur++;
 	}
-	asprintf(&line, "%u", num);
+	sprintf(line, "%u", num);
 	xmlNewChild(root_node, NULL, (const xmlChar *)"KeyCount",
 		    (xmlChar *)line);
-	free(line);
-	xmlDocDumpMemory(doc, &xml, &xml_len);
+	xmlDocDumpMemory(doc, &resp->payload, &xml_len);
+	resp->payload_len = xml_len;
 	xmlFreeDoc(doc);
 	resp->status = HTTP_STATUS_OK;
 
-	ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n"
-		       "Content-Length: %d\r\n\r\n%s",
-		       resp->status, http_status_str(resp->status),
-		       xml_len, xml);
-	if (ret < 0) {
-		free(xml);
-		return NULL;
-	}
-	*outlen = ret;
-	free(xml);
+	tm = localtime(&now);
+	strftime(line, 64, "%FT%T%z", tm);
+	put_response_header(resp, "Date", line);
+	sprintf(line, "%ld", resp->payload_len);
+	put_response_header(resp, "Content-Length", line);
+	put_response_header(resp, "Connection", "close");
+	put_response_header(resp, "Server", "s3gw");
+	buf = gen_response_header(resp, &ret);
+	if (buf)
+		*outlen = ret;
+	else
+		resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
 	return buf;
 }
 
