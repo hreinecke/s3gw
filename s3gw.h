@@ -80,6 +80,8 @@ struct s3gw_response {
 	enum http_status status;
 	struct linked_list resp_hdr_list;
 	struct s3gw_object *obj;
+	unsigned char *payload;
+	size_t payload_len;
 };
 
 void setup_parser(http_parser_settings *settings);

@@ -226,8 +226,14 @@ format_response:
 		fprintf(stderr, "Error formatting response\n");
 		return 0;
 	}
+	if (resp->obj) {
+		if (resp->payload)
+			fprintf(stderr, "Response payload already set!\n");
+		resp->payload = resp->obj->map;
+		resp->payload_len = resp->obj->size;
+	}
 	printf("Response (len %d + %lu):\n%s\n",
-	       resp_len, resp->obj ? resp->obj->size : 0, resp_hdr);
+	       resp_len, resp->payload_len, resp_hdr);
 	ret = write_request(req, resp_hdr, resp_len, &nwritten);
 	if (ret < 0) {
 		fprintf(stderr, "Error %d after writing %lu response bytes\n",
@@ -246,9 +252,9 @@ format_response:
 	total += nwritten;
 	if (resp->status == HTTP_STATUS_CONTINUE)
 		goto read_payload;
-	if (resp->obj) {
-		ret = write_request(req, resp->obj->map,
-				    resp->obj->size, &nwritten);
+	if (resp->payload) {
+		ret = write_request(req, (char *)resp->payload,
+				    resp->payload_len, &nwritten);
 		if (ret < 0) {
 			fprintf(stderr,
 				"Error %d after writing %lu response bytes\n",
@@ -261,6 +267,13 @@ format_response:
 			printf("Wrote %lu payload bytes\n", nwritten);
 		}
 		total += nwritten;
+	}
+	if (resp->obj) {
+		resp->payload = NULL;
+		resp->payload_len = 0;
+		clear_object(resp->obj);
+		free(resp->obj);
+		resp->obj = NULL;
 	}
 out_free:
 	free(resp_hdr);
