@@ -357,7 +357,7 @@ char *get_object(struct s3gw_request *req, struct s3gw_response *resp,
 	strftime(line, 64, "%FT%T%z", tm);
 	put_response_header(resp, "Last-Modified", line);
 	sprintf(line, "%lu", obj->size);
-	put_response_header(resp, "Size", line);
+	put_response_header(resp, "Content-Length", line);
 	etag = bin2hex(obj->etag, 16, &etag_len);
 	if (!etag) {
 		resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
