@@ -394,24 +394,16 @@ out_free_obj:
 	return buf;
 }
 
-static char copy_object_template[]=
-	"HTTP/1.1 %d %s\r\n"
-	"Date: %s\r\n"
-	"Content-Length: %lu\r\n"
-	"Connection: close\r\n"
-	"Server: s3gw\r\n\r\n%s";
-
 char *copy_object(struct s3gw_request *req, struct s3gw_response *resp,
 		  const char *source, int *outlen)
 {
 	struct s3gw_object *obj;
 	char *bucket, *b, *o, *e, *save;
-	char cur_time_str[64], mod_time_str[64];
+	char line[64];
 	time_t now = time(NULL);
 	xmlDoc *doc;
 	xmlNs *ns;
 	xmlNode *root;
-	xmlChar *xml;
 	struct tm *tm;
 	char *buf = NULL;
 	int ret, xml_len;
@@ -461,10 +453,6 @@ char *copy_object(struct s3gw_request *req, struct s3gw_response *resp,
 	}
 	resp->status = HTTP_STATUS_OK;
 
-	tm = localtime(&obj->mtime);
-	strftime(mod_time_str, 64, "%FT%T%z", tm);
-	tm = localtime(&now);
-	strftime(cur_time_str, 64, "%FT%T%z", tm);
 	etag = bin2hex(obj->etag, 16, &etag_len);
 	if (!etag) {
 		resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
@@ -477,24 +465,30 @@ char *copy_object(struct s3gw_request *req, struct s3gw_response *resp,
 	ns = xmlNewNs(root, xmlns, NULL);
 	xmlSetNs(root, ns);
 	xmlDocSetRootElement(doc, root);
+	tm = localtime(&obj->mtime);
+	strftime(line, 64, "%FT%T%z", tm);
 	xmlNewChild(root, NULL, (const xmlChar *)"LastModified",
-		    (xmlChar *)mod_time_str);
+		    (xmlChar *)line);
 	etag = bin2hex(obj->etag, 16, &etag_len);
 	xmlNewChild(root, NULL, (const xmlChar *)"ETag",
 		    (xmlChar *)etag);
 	free(etag);
-	xmlDocDumpMemory(doc, &xml, &xml_len);
+	xmlDocDumpMemory(doc, &resp->payload, &xml_len);
 	xmlFreeDoc(doc);
+	resp->payload_len = xml_len;
 
-	ret = asprintf(&buf, copy_object_template,
-		       resp->status, http_status_str(resp->status),
-		       cur_time_str, xml_len, xml);
-	if (ret > 0)
+	tm = localtime(&now);
+	strftime(line, 64, "%FT%T%z", tm);
+	put_response_header(resp, "Date", line);
+	sprintf(line, "%ld", resp->payload_len);
+	put_response_header(resp, "Content-Length", line);
+	put_response_header(resp, "Connection", "close");
+	put_response_header(resp, "Server", "s3gw");
+	buf = gen_response_header(resp, &ret);
+	if (buf)
 		*outlen = ret;
-	else {
+	else
 		resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
-		buf = NULL;
-	}
 out_free_obj:
 	clear_object(obj);
 	free(obj);
