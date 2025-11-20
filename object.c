@@ -76,7 +76,7 @@ void xml_delete_list(struct s3gw_request *req, xmlNode *root,
 		obj = malloc(sizeof(*obj));
 		if (!obj)
 			continue;
-		node = find_node(obj_node, (const xmlChar *)"Key");
+		node = find_node(obj_node->children, (const xmlChar *)"Key");
 		if (!node) {
 			free(obj);
 			continue;
@@ -128,8 +128,16 @@ char *delete_objects(struct s3gw_request *req, struct s3gw_response *resp,
 
 	INIT_LINKED_LIST(&top);
 	if (!req->xml) {
-		resp->status = HTTP_STATUS_NOT_FOUND;
-		return NULL;
+		if (!req->payload) {
+			resp->status = HTTP_STATUS_BAD_REQUEST;
+			return NULL;
+		}
+		req->xml = xmlParseMemory((char *)req->payload,
+					  req->payload_len);
+		if (!req->xml) {
+			resp->status = HTTP_STATUS_BAD_REQUEST;
+			return NULL;
+		}
 	}
 	root = xmlDocGetRootElement(req->xml);
 	xml_delete_list(req, root, &top);
