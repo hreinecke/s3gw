@@ -79,6 +79,7 @@ void xml_delete_list(struct s3gw_request *req, xmlNode *root,
 		obj = malloc(sizeof(*obj));
 		if (!obj)
 			continue;
+		memset(obj, 0, sizeof(*obj));
 		node = find_node(obj_node->children, (const xmlChar *)"Key");
 		if (!node) {
 			free(obj);
