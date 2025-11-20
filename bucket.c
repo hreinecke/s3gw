@@ -119,10 +119,10 @@ char *list_buckets(struct s3gw_request *req, struct s3gw_response *resp,
 	struct s3gw_bucket *b, *t;
 	xmlDoc *doc;
 	xmlNode *root_node, *buckets_node, *b_node, *owner_node;
-	unsigned char *xml;
 	int xml_len;
 	char *buf;
-	char time_str[64];
+	char line[64];
+	time_t now = time(NULL);
 	struct tm *tm;
 	int ret;
 
@@ -162,10 +162,10 @@ char *list_buckets(struct s3gw_request *req, struct s3gw_response *resp,
 		b_node = xmlNewChild(buckets_node, NULL,
 				     (const xmlChar *)"Bucket", NULL);
 		tm = localtime(&b->ctime);
-		strftime(time_str, 64, "%FT%T%z", tm);
+		strftime(line, 64, "%FT%T%z", tm);
 		xmlNewChild(b_node, NULL,
 			    (const xmlChar *)"CreationDate",
-			    (xmlChar *)time_str);
+			    (xmlChar *)line);
 		xmlNewChild(b_node, NULL,
 			    (const xmlChar *)"Name", (xmlChar *)b->name);
 	}
@@ -174,21 +174,21 @@ char *list_buckets(struct s3gw_request *req, struct s3gw_response *resp,
 	xmlNewChild(owner_node, NULL, (const xmlChar *)"ID",
 		    (xmlChar *)req->owner);
 
-	xmlDocDumpMemory(doc, &xml, &xml_len);
+	xmlDocDumpMemory(doc, &resp->payload, &xml_len);
+	resp->payload_len = xml_len;
 	xmlFreeDoc(doc);
 
-	ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n"
-		       "Content-Length: %d\r\n\r\n%s",
-		       resp->status, http_status_str(resp->status),
-		       xml_len, xml);
-	if (ret > 0)
+	tm = localtime(&now);
+	strftime(line, 64, "%FT%T%z", tm);
+	put_response_header(resp, "Date", line);
+	sprintf(line, "%ld", resp->payload_len);
+	put_response_header(resp, "Content-Length", line);
+	buf = gen_response_header(resp, &ret);
+	if (buf)
 		*outlen = ret;
-	else {
+	else
 		resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
-		buf = NULL;
-	}
 
-	free(xml);
 	return buf;
 }
 
