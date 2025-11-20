@@ -99,23 +99,33 @@ void reset_response(struct s3gw_response *resp)
 }
 
 static int read_request(struct s3gw_request *req, char *buf, size_t len,
-			size_t *outlen)
+			size_t *outlen, bool nowait)
 {
 	struct msghdr msg;
 	struct iovec iov;
+	size_t off = 0;
 
 	if (req->fd) {
 		int ret;
-		size_t off = 0;
 
-		memset(&msg, 0, sizeof(msg));
-		iov.iov_base = buf + off;
-		iov.iov_len = len - off;
-		msg.msg_iov = &iov;
-		msg.msg_iovlen = 1;
-		ret = recvmsg(req->fd, &msg, 0);
-		if (ret > 0)
-			*outlen = ret;
+		while (off < len) {
+			memset(&msg, 0, sizeof(msg));
+			iov.iov_base = buf + off;
+			iov.iov_len = len - off;
+			msg.msg_iov = &iov;
+			msg.msg_iovlen = 1;
+			ret = recvmsg(req->fd, &msg,
+				      nowait ? MSG_DONTWAIT : 0);
+			if (ret > 0) {
+				off += ret;
+				if (!nowait)
+					len = off;
+			} else if (ret == 0)
+				break;
+			if (errno != EAGAIN)
+				break;
+		}
+		*outlen = off;
 		return ret;
 	}
 	return SSL_read_ex(req->ssl, buf, len, outlen);
@@ -160,7 +170,7 @@ size_t handle_request(struct s3gw_request *req, struct s3gw_response *resp)
 
 	setup_parser(&settings);
 
-	ret = read_request(req, buf, sizeof(buf), &nread);
+	ret = read_request(req, buf, sizeof(buf), &nread, false);
 	if (ret < 0) {
 		fprintf(stderr, "Error %d after reading %ld bytes\n",
 			errno, nread);
@@ -183,13 +193,18 @@ size_t handle_request(struct s3gw_request *req, struct s3gw_response *resp)
 	if (ret < nread)
 		printf("%ld trailing bytes on input\n", nread - ret);
 
+	if (fetch_request_header(req, "Expect", &resp_len)) {
+		printf("Sending intermediate status\n");
+		goto format_response;
+	}
+read_payload:
 	if (req->payload_len && !req->payload && !req->xml) {
 		size_t plen;
 		printf("reading %ld bytes of payload\n",
 		       req->payload_len);
 		req->payload = malloc(req->payload_len);
 		ret = read_request(req, (char *)req->payload,
-				   req->payload_len, &plen);
+				   req->payload_len, &plen, true);
 		nread += plen;
 		if (ret < 0) {
 			fprintf(stderr,
@@ -203,7 +218,9 @@ size_t handle_request(struct s3gw_request *req, struct s3gw_response *resp)
 				plen);
 			return nread;
 		}
+		printf("read %ld bytes of payload\n", plen);
 	}
+format_response:
 	resp_hdr = format_response(req, resp, &resp_len);
 	if (!resp_hdr) {
 		fprintf(stderr, "Error formatting response\n");
@@ -227,6 +244,8 @@ size_t handle_request(struct s3gw_request *req, struct s3gw_response *resp)
 	}
 	printf("Wrote %lu response bytes\n", nwritten);
 	total += nwritten;
+	if (resp->status == HTTP_STATUS_CONTINUE)
+		goto read_payload;
 	if (resp->obj) {
 		ret = write_request(req, resp->obj->map,
 				    resp->obj->size, &nwritten);
@@ -242,9 +261,6 @@ size_t handle_request(struct s3gw_request *req, struct s3gw_response *resp)
 			printf("Wrote %lu payload bytes\n", nwritten);
 		}
 		total += nwritten;
-		clear_object(resp->obj);
-		free(resp->obj);
-		resp->obj = NULL;
 	}
 out_free:
 	free(resp_hdr);

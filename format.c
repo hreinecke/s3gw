@@ -78,7 +78,7 @@ static char *put_status(enum http_status s, const char *data, int *outlen)
 	int ret;
 
 	if (!data) {
-		ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n", s,
+		ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n\r\n", s,
 			       http_status_str(s));
 	} else {
 		ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n"

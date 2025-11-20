@@ -243,7 +243,7 @@ static int fill_object(struct s3gw_object *obj, const char *dirname,
 	if (ret < 0)
 		return -errno;
 
-	if (payload)
+	if (payload_len)
 		fd = open(pathname, O_RDWR | O_CREAT, 0644);
 	else
 		fd = open(pathname, O_RDONLY);
@@ -253,8 +253,14 @@ static int fill_object(struct s3gw_object *obj, const char *dirname,
 		ret = -errno;
 		goto out;
 	}
-	if (payload && payload_len) {
+	if (payload_len) {
 		size_t off = 0;
+
+		if (!payload) {
+			close(fd);
+			ret = 0;
+			goto skip_write;
+		}
 
 		while (off < payload_len) {
 			ret = write(fd, payload + off, payload_len - off);
@@ -293,12 +299,11 @@ static int fill_object(struct s3gw_object *obj, const char *dirname,
 		fprintf(stderr, "md5sum calculation failed\n");
 		etag_len = 0;
 	}
-	obj->key = strdup(name);
-	obj->mtime = st.st_mtime;
-	obj->size = st.st_size;
 	obj->etag = etag;
 	obj->etag_len = etag_len;
-
+skip_write:
+	obj->key = strdup(name);
+	obj->mtime = st.st_mtime;
 	printf("Found object '%s'\n", obj->key);
 out:		
 	free(pathname);

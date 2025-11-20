@@ -23,7 +23,10 @@ char *create_object(struct s3gw_request *req, struct s3gw_response *resp,
 	int ret;
 
 	memset(&obj, 0, sizeof(obj));
-	resp->status = HTTP_STATUS_OK;
+	if (req->payload_len && !req->payload)
+		resp->status = HTTP_STATUS_CONTINUE;
+	else
+		resp->status = HTTP_STATUS_OK;
 	ret = dir_fetch_object(req, &obj, req->bucket, req->object);
 	if (ret < 0) {
 		switch (ret) {
