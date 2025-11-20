@@ -45,7 +45,7 @@ char *create_bucket(struct s3gw_request *req, struct s3gw_response *resp,
 			}
 		}
 	}
-	if (location && !strcmp(req->region, location)) {
+	if (location && strcmp(req->region, location)) {
 		fprintf(stderr, "Cannot create bucket in location '%s'\n",
 			location);
 		resp->status = HTTP_STATUS_FORBIDDEN;
