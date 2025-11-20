@@ -181,8 +181,6 @@ char *list_buckets(struct s3gw_request *req, struct s3gw_response *resp,
 	tm = localtime(&now);
 	strftime(line, 64, "%FT%T%z", tm);
 	put_response_header(resp, "Date", line);
-	sprintf(line, "%ld", resp->payload_len);
-	put_response_header(resp, "Content-Length", line);
 	buf = gen_response_header(resp, &ret);
 	if (buf)
 		*outlen = ret;
@@ -224,7 +222,7 @@ char *bucket_versioning(struct s3gw_request *req, struct s3gw_response *resp,
 	xmlDoc *doc;
 	xmlNode *node;
 	int xml_len, ret;
-	char *buf, line[64];
+	char *buf;
 
 	doc = xmlNewDoc((const xmlChar *)"1.0");
 	node = xmlNewDocNode(doc, NULL,
@@ -236,8 +234,6 @@ char *bucket_versioning(struct s3gw_request *req, struct s3gw_response *resp,
 	xmlFreeDoc(doc);
 	resp->status = HTTP_STATUS_OK;
 
-	sprintf(line, "%ld", resp->payload_len);
-	put_response_header(resp, "Content-Length", line);
 	buf = gen_response_header(resp, &ret);
 	if (buf)
 		*outlen = ret;

@@ -126,7 +126,6 @@ char *delete_objects(struct s3gw_request *req, struct s3gw_response *resp,
 	xmlDoc *doc;
 	xmlNs *ns;
 	xmlNode *root, *node;
-	char line[64];
 	char *buf;
 	int xml_len, ret;
 
@@ -205,8 +204,6 @@ char *delete_objects(struct s3gw_request *req, struct s3gw_response *resp,
 	xmlFreeDoc(doc);
 	resp->status = HTTP_STATUS_OK;
 
-	sprintf(line, "%ld", resp->payload_len);
-	put_response_header(resp, "Content-Length", line);
 	buf = gen_response_header(resp, &ret);
 	if (buf)
 		*outlen = ret;
@@ -319,8 +316,6 @@ char *list_objects(struct s3gw_request *req, struct s3gw_response *resp,
 	tm = localtime(&now);
 	strftime(line, 64, "%FT%T%z", tm);
 	put_response_header(resp, "Date", line);
-	sprintf(line, "%ld", resp->payload_len);
-	put_response_header(resp, "Content-Length", line);
 	put_response_header(resp, "Connection", "close");
 	put_response_header(resp, "Server", "s3gw");
 	buf = gen_response_header(resp, &ret);
@@ -479,8 +474,6 @@ char *copy_object(struct s3gw_request *req, struct s3gw_response *resp,
 	tm = localtime(&now);
 	strftime(line, 64, "%FT%T%z", tm);
 	put_response_header(resp, "Date", line);
-	sprintf(line, "%ld", resp->payload_len);
-	put_response_header(resp, "Content-Length", line);
 	put_response_header(resp, "Connection", "close");
 	put_response_header(resp, "Server", "s3gw");
 	buf = gen_response_header(resp, &ret);
