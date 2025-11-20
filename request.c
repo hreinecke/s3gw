@@ -220,3 +220,20 @@ char *fetch_request_header(struct s3gw_request *req, const char *key, int *len)
 	*len = 0;
 	return NULL;
 }
+
+const char *fetch_request_query(struct s3gw_request *req,
+				const char *key, int *len)
+{
+	struct s3gw_header *hdr;
+
+	list_for_each_entry(hdr, &req->query_list, list) {
+		if (!strcmp(hdr->key, key)) {
+			const char *value = hdr->value ?
+				(const char *)hdr->value : "";
+			*len = strlen(value);
+			return value;
+		}
+	}
+	*len = 0;
+	return NULL;
+}

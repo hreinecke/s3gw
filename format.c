@@ -48,6 +48,14 @@ char *format_response(struct s3gw_request *req, int *outlen)
 			req->op = S3_OP_CopyObject;
 		}
 	}
+	if (req->op == S3_OP_ListObjects) {
+		const char *query;
+
+		query = fetch_request_query(req, "versioning", &len);
+		if (query) {
+			req->op = S3_OP_GetBucketVersioning;
+		}
+	}
 
 	switch (req->op) {
 	case S3_OP_CreateBucket:
@@ -61,6 +69,9 @@ char *format_response(struct s3gw_request *req, int *outlen)
 		break;
 	case S3_OP_HeadBucket:
 		buf = check_bucket(req, outlen);
+		break;
+	case S3_OP_GetBucketVersioning:
+		buf = bucket_versioning(req, outlen);
 		break;
 	case S3_OP_PutObject:
 		buf = create_object(req, outlen);

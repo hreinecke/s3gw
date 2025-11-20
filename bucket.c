@@ -229,3 +229,35 @@ char *check_bucket(struct s3gw_request *req, int *outlen)
 	}
 	return buf;
 }
+
+char *bucket_versioning(struct s3gw_request *req, int *outlen)
+{
+	xmlDoc *doc;
+	xmlNode *node;
+	unsigned char *xml;
+	int xml_len, ret;
+	char *buf;
+
+	doc = xmlNewDoc((const xmlChar *)"1.0");
+	node = xmlNewDocNode(doc, NULL,
+			     (const xmlChar *)"VersioningConfiguration",
+			     NULL);
+	xmlDocSetRootElement(doc, node);
+	xmlDocDumpMemory(doc, &xml, &xml_len);
+	xmlFreeDoc(doc);
+	req->status = HTTP_STATUS_OK;
+
+	ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n"
+		       "Content-Length: %d\r\n\r\n%s",
+		       req->status, http_status_str(req->status),
+		       xml_len, xml);
+	if (ret > 0)
+		*outlen = ret;
+	else {
+		req->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
+		buf = NULL;
+	}
+
+	free(xml);
+	return buf;
+}

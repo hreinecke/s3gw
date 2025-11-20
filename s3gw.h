@@ -84,6 +84,8 @@ void init_request(struct s3gw_ctx *ctx, struct s3gw_request *req);
 void reset_request(struct s3gw_request *req);
 size_t handle_request(struct s3gw_request *req);
 char *fetch_request_header(struct s3gw_request *req, const char *key, int *len);
+const char *fetch_request_query(struct s3gw_request *req,
+				const char *key, int *len);
 
 /* dir.c */
 int create_owner_secret(struct s3gw_ctx *ctx, char *owner_id, char *secret);
@@ -106,6 +108,7 @@ char *create_bucket(struct s3gw_request *req, int *outlen);
 char *delete_bucket(struct s3gw_request *req, int *outlen);
 char *list_buckets(struct s3gw_request *req, int *outlen);
 char *check_bucket(struct s3gw_request *req, int *outlen);
+char *bucket_versioning(struct s3gw_request *req, int *outlen);
 
 /* object.c */
 char *create_object(struct s3gw_request *req, int *outlen);
