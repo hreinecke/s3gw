@@ -61,26 +61,14 @@ char *create_bucket(struct s3gw_request *req, struct s3gw_response *resp,
 	}
 	resp->status = HTTP_STATUS_OK;
 	if (location)
-		ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n"
-			       "x-amz-bucket-region: %s\r\n"
-			       "Location: /%s\r\n"
-			       "Content-Length: 0\r\n"
-			       "Connection: close\r\n",
-			       resp->status, http_status_str(resp->status),
-			       req->region, req->bucket);
-	else
-		ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n"
-			       "Location: /%s\r\n"
-			       "Content-Length: 0\r\n"
-			       "Connection: close\r\n",
-			       resp->status, http_status_str(resp->status),
-			       req->bucket);
-	if (ret > 0)
+		put_response_header(resp, "x-amz-bucket-region",
+				    (char *)location);
+	put_response_header(resp, "Location", req->bucket);
+	put_response_header(resp, "Connection", "close");
+	put_response_header(resp, "Server", "s3gw");
+	buf = gen_response_header(resp, &ret);
+	if (buf)
 		*outlen = ret;
-	else {
-		resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
-		buf = NULL;
-	}
 	return buf;
 }
 

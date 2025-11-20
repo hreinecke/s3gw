@@ -154,10 +154,14 @@ char *delete_objects(struct s3gw_request *req, struct s3gw_response *resp,
 	xmlSetNs(root, ns);
 	xmlDocSetRootElement(doc, root);
 	list_for_each_entry_safe(obj, tmp, &top, list) {
-		if (obj->error)
+		if (obj->error) {
+			printf("%s: Skip object %s, error %d\n", __func__,
+			       obj->key, obj->error);
 			continue;
+		}
 		ret = dir_delete_object(req, req->bucket, obj->key);
 		if (ret < 0) {
+			printf("%s: failed to delete object\n", obj->key);
 			obj->error = ret;
 			continue;
 		}
