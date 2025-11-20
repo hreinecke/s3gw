@@ -209,16 +209,12 @@ char *check_bucket(struct s3gw_request *req, struct s3gw_response *resp,
 		return NULL;
 	}
 	resp->status = HTTP_STATUS_OK;
-	ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n"
-		       "x-amz-bucket-region: %s\r\n",
-		       resp->status, http_status_str(resp->status),
-		       req->region);
-	if (ret > 0)
+	put_response_header(resp, "x-amz-bucket-region", req->region);
+	buf = gen_response_header(resp, &ret);
+	if (buf)
 		*outlen = ret;
-	else {
+	else
 		resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
-		buf = NULL;
-	}
 	return buf;
 }
 
@@ -227,30 +223,26 @@ char *bucket_versioning(struct s3gw_request *req, struct s3gw_response *resp,
 {
 	xmlDoc *doc;
 	xmlNode *node;
-	unsigned char *xml;
 	int xml_len, ret;
-	char *buf;
+	char *buf, line[64];
 
 	doc = xmlNewDoc((const xmlChar *)"1.0");
 	node = xmlNewDocNode(doc, NULL,
 			     (const xmlChar *)"VersioningConfiguration",
 			     NULL);
 	xmlDocSetRootElement(doc, node);
-	xmlDocDumpMemory(doc, &xml, &xml_len);
+	xmlDocDumpMemory(doc, &resp->payload, &xml_len);
+	resp->payload_len = xml_len;
 	xmlFreeDoc(doc);
 	resp->status = HTTP_STATUS_OK;
 
-	ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n"
-		       "Content-Length: %d\r\n\r\n%s",
-		       resp->status, http_status_str(resp->status),
-		       xml_len, xml);
-	if (ret > 0)
+	sprintf(line, "%ld", resp->payload_len);
+	put_response_header(resp, "Content-Length", line);
+	buf = gen_response_header(resp, &ret);
+	if (buf)
 		*outlen = ret;
-	else {
+	else
 		resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
-		buf = NULL;
-	}
 
-	free(xml);
 	return buf;
 }
