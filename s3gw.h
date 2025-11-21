@@ -113,30 +113,20 @@ int dir_splice_objects(struct s3gw_request *req,
 
 /* bucket.c */
 xmlNode *find_node(xmlNode *top, const xmlChar *key);
-char *create_bucket(struct s3gw_request *req, struct s3gw_response *resp,
-		    int *outlen);
-char *delete_bucket(struct s3gw_request *req,  struct s3gw_response *resp,
-		    int *outlen);
-char *list_buckets(struct s3gw_request *req,  struct s3gw_response *resp,
-		   int *outlen);
-char *check_bucket(struct s3gw_request *req,  struct s3gw_response *resp,
-		   int *outlen);
-char *bucket_versioning(struct s3gw_request *req,  struct s3gw_response *resp,
-			int *outlen);
+void create_bucket(struct s3gw_request *req, struct s3gw_response *resp);
+void delete_bucket(struct s3gw_request *req,  struct s3gw_response *resp);
+void list_buckets(struct s3gw_request *req,  struct s3gw_response *resp);
+void check_bucket(struct s3gw_request *req,  struct s3gw_response *resp);
+void bucket_versioning(struct s3gw_request *req,  struct s3gw_response *resp);
 
 /* object.c */
-char *create_object(struct s3gw_request *req,  struct s3gw_response *resp,
-		    int *outlen);
-char *delete_object(struct s3gw_request *req,  struct s3gw_response *resp,
-		    int *outlen);
-char *list_objects(struct s3gw_request *req,  struct s3gw_response *resp,
-		   int *outlen);
-char *get_object(struct s3gw_request *req,  struct s3gw_response *resp,
-		 int *outlen);
-char *copy_object(struct s3gw_request *req,  struct s3gw_response *resp,
-		  const char *source, int *outlen);
-char *delete_objects(struct s3gw_request *req,  struct s3gw_response *resp,
-		     int *outlen);
+void create_object(struct s3gw_request *req, struct s3gw_response *resp);
+void delete_object(struct s3gw_request *req,  struct s3gw_response *resp);
+void list_objects(struct s3gw_request *req,  struct s3gw_response *resp);
+void get_object(struct s3gw_request *req,  struct s3gw_response *resp);
+void copy_object(struct s3gw_request *req,  struct s3gw_response *resp,
+		 const char *source);
+void delete_objects(struct s3gw_request *req,  struct s3gw_response *resp);
 void clear_object(struct s3gw_object *obj);
 
 /* format.c */

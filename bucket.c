@@ -24,10 +24,8 @@ xmlNode *find_node(xmlNode *top, const xmlChar *key)
 	return NULL;
 }
 
-char *create_bucket(struct s3gw_request *req, struct s3gw_response *resp,
-		    int *outlen)
+void create_bucket(struct s3gw_request *req, struct s3gw_response *resp)
 {
-	char *buf;
 	const char *location = NULL;
 	int ret;
 
@@ -49,7 +47,7 @@ char *create_bucket(struct s3gw_request *req, struct s3gw_response *resp,
 		fprintf(stderr, "Cannot create bucket in location '%s'\n",
 			location);
 		resp->status = HTTP_STATUS_FORBIDDEN;
-		return NULL;
+		return;
 	}
 	ret = dir_create_bucket(req, req->bucket);
 	if (ret < 0) {
@@ -57,25 +55,20 @@ char *create_bucket(struct s3gw_request *req, struct s3gw_response *resp,
 		if (ret == -EEXIST) {
 			resp->status = HTTP_STATUS_CONFLICT;
 		}
-		return NULL;
+		return;
 	}
 	resp->status = HTTP_STATUS_OK;
 	if (location)
 		put_response_header(resp, "x-amz-bucket-region",
 				    (char *)location);
 	put_response_header(resp, "Location", req->bucket);
-	buf = gen_response_header(resp, &ret);
-	if (buf)
-		*outlen = ret;
-	return buf;
 }
 
-char *delete_bucket(struct s3gw_request *req, struct s3gw_response *resp,
-		    int *outlen)
+void delete_bucket(struct s3gw_request *req, struct s3gw_response *resp)
 {
-	char *buf;
 	int ret;
 
+	resp->status = HTTP_STATUS_NO_CONTENT;
 	ret = dir_delete_bucket(req, req->bucket);
 	if (ret < 0) {
 		switch (ret) {
@@ -92,27 +85,16 @@ char *delete_bucket(struct s3gw_request *req, struct s3gw_response *resp,
 			resp->status = HTTP_STATUS_BAD_REQUEST;
 			break;
 		}
-		return NULL;
 	}
-	resp->status = HTTP_STATUS_NO_CONTENT;
-
-	buf = gen_response_header(resp, &ret);
-	if (buf)
-		*outlen = ret;
-	else
-		resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
-	return buf;
 }
 
-char *list_buckets(struct s3gw_request *req, struct s3gw_response *resp,
-		   int *outlen)
+void list_buckets(struct s3gw_request *req, struct s3gw_response *resp)
 {
 	struct linked_list top;
 	struct s3gw_bucket *b, *t;
 	xmlDoc *doc;
 	xmlNode *root_node, *buckets_node, *b_node, *owner_node;
 	int xml_len;
-	char *buf;
 	char line[64];
 	struct tm *tm;
 	int ret;
@@ -121,7 +103,7 @@ char *list_buckets(struct s3gw_request *req, struct s3gw_response *resp,
 	ret = dir_find_buckets(req, &top);
 	if (ret < 0 && ret != -EPERM) {
 		resp->status = HTTP_STATUS_NOT_FOUND;
-		return NULL;
+		return;
 	}
 	printf("found %d buckets\n", ret);
 	resp->status = HTTP_STATUS_OK;
@@ -168,21 +150,11 @@ char *list_buckets(struct s3gw_request *req, struct s3gw_response *resp,
 	xmlDocDumpMemory(doc, &resp->payload, &xml_len);
 	resp->payload_len = xml_len;
 	xmlFreeDoc(doc);
-
-	buf = gen_response_header(resp, &ret);
-	if (buf)
-		*outlen = ret;
-	else
-		resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
-
-	return buf;
 }
 
-char *check_bucket(struct s3gw_request *req, struct s3gw_response *resp,
-		   int *outlen)
+void check_bucket(struct s3gw_request *req, struct s3gw_response *resp)
 {
 	struct linked_list top;
-	char *buf;
 	int ret;
 
 	INIT_LINKED_LIST(&top);
@@ -192,25 +164,17 @@ char *check_bucket(struct s3gw_request *req, struct s3gw_response *resp,
 			resp->status = HTTP_STATUS_FORBIDDEN;
 		else
 			resp->status = HTTP_STATUS_NOT_FOUND;
-		return NULL;
+		return;
 	}
 	resp->status = HTTP_STATUS_OK;
 	put_response_header(resp, "x-amz-bucket-region", req->region);
-	buf = gen_response_header(resp, &ret);
-	if (buf)
-		*outlen = ret;
-	else
-		resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
-	return buf;
 }
 
-char *bucket_versioning(struct s3gw_request *req, struct s3gw_response *resp,
-			int *outlen)
+void bucket_versioning(struct s3gw_request *req, struct s3gw_response *resp)
 {
 	xmlDoc *doc;
 	xmlNode *node;
-	int xml_len, ret;
-	char *buf;
+	int xml_len;
 
 	doc = xmlNewDoc((const xmlChar *)"1.0");
 	node = xmlNewDocNode(doc, NULL,
@@ -221,12 +185,4 @@ char *bucket_versioning(struct s3gw_request *req, struct s3gw_response *resp,
 	resp->payload_len = xml_len;
 	xmlFreeDoc(doc);
 	resp->status = HTTP_STATUS_OK;
-
-	buf = gen_response_header(resp, &ret);
-	if (buf)
-		*outlen = ret;
-	else
-		resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
-
-	return buf;
 }

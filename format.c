@@ -85,31 +85,9 @@ char *gen_response_header(struct s3gw_response *resp, int *outlen)
 	return header;
 }
 
-static char *put_status(enum http_status s, const char *data, int *outlen)
-{
-	char *buf;
-	int ret;
-
-	if (!data) {
-		ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n\r\n", s,
-			       http_status_str(s));
-	} else {
-		ret = asprintf(&buf, "HTTP/1.1 %d %s\r\n"
-			       "Content-Length: %ld\r\n\r\n%s",
-			       s, http_status_str(s), strlen(data),
-			       data);
-	}
-	if (ret > 0)
-		*outlen = ret;
-	else
-		buf = NULL;
-	return buf;
-}
-
 struct s3gw_op_handler {
 	enum s3_api_ops op;
-	char *(*func)(struct s3gw_request *req, struct s3gw_response *resp,
-			 int *outlen);
+	void (*func)(struct s3gw_request *req, struct s3gw_response *resp);
 };
 
 static struct s3gw_op_handler op_handler_list[] = {
@@ -130,17 +108,17 @@ static struct s3gw_op_handler op_handler_list[] = {
 char *format_response(struct s3gw_request *req, struct s3gw_response *resp,
 		      int *outlen)
 {
-	char *buf = NULL, *source = NULL;
+	char *source = NULL;
 	int len;
 
 	if (!req) {
-		buf = put_status(HTTP_STATUS_BAD_REQUEST, NULL, outlen);
-		return buf;
+		resp->status = HTTP_STATUS_BAD_REQUEST;
+		goto out_resp;
 	}
 
 	if (check_authorization(req) < 0) {
-		buf = put_status(HTTP_STATUS_FORBIDDEN, NULL, outlen);
-		return buf;
+		resp->status = HTTP_STATUS_FORBIDDEN;
+		goto out_resp;
 	}
 
 	if (req->op == S3_OP_PutObject) {
@@ -159,7 +137,7 @@ char *format_response(struct s3gw_request *req, struct s3gw_response *resp,
 	}
 
 	if (req->op == S3_OP_CopyObject) {
-		buf = copy_object(req, resp, source, outlen);
+		copy_object(req, resp, source);
 	} else {
 		struct s3gw_op_handler *op_handler = NULL;
 		int i;
@@ -171,13 +149,12 @@ char *format_response(struct s3gw_request *req, struct s3gw_response *resp,
 			}
 		}
 		if (op_handler && op_handler->func) {
-			buf = op_handler->func(req, resp, outlen);
+			op_handler->func(req, resp);
 		} else {
 			fprintf(stderr, "Invalid op %d\n", req->op);
 			resp->status = HTTP_STATUS_NOT_IMPLEMENTED;
 		}
 	}
-	if (!buf)
-		buf = gen_response_header(resp, outlen);
-	return buf;
+out_resp:
+	return gen_response_header(resp, outlen);
 }

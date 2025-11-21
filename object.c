@@ -16,23 +16,22 @@
 static xmlChar xmlns[] =
 	"http://s3.amazonaws.com/doc/2006-03-01/";
 
-char *create_object(struct s3gw_request *req, struct s3gw_response *resp,
-		    int *outlen)
+void create_object(struct s3gw_request *req, struct s3gw_response *resp)
 {
 	struct s3gw_object *obj;
-	char *etag, *buf;
+	char *etag;
 	size_t etag_len;
 	int ret;
 
 	if (!req->payload_len && !resp->obj) {
 		resp->status = HTTP_STATUS_BAD_REQUEST;
-		return NULL;
+		return;
 	}
 	if (!resp->obj) {
 		obj = malloc(sizeof(*obj));
 		if (!obj) {
 			resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
-			return NULL;
+			return;
 		}
 		memset(obj, 0, sizeof(*obj));
 		resp->obj = obj;
@@ -57,10 +56,10 @@ char *create_object(struct s3gw_request *req, struct s3gw_response *resp,
 			resp->status = HTTP_STATUS_BAD_REQUEST;
 			break;
 		}
-		return NULL;
+		return;
 	}
 	if (resp->status == HTTP_STATUS_CONTINUE)
-		return NULL;
+		return;
 
 	etag = bin2hex(resp->obj->etag, 16, &etag_len);
 	if (!etag) {
@@ -69,27 +68,17 @@ char *create_object(struct s3gw_request *req, struct s3gw_response *resp,
 	}
 	put_response_header(resp, "ETag", etag);
 	free(etag);
-	buf = gen_response_header(resp, &ret);
-	if (buf)
-		*outlen = ret;
-	else
-		resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
 
 out_free_obj:
 	clear_object(resp->obj);
 	free(resp->obj);
 	resp->obj = NULL;
-
-	return buf;
 }
 
-char *delete_object(struct s3gw_request *req, struct s3gw_response *resp,
-		    int *outlen)
+void delete_object(struct s3gw_request *req, struct s3gw_response *resp)
 {
-	char *buf;
 	int ret;
 
-	resp->status = HTTP_STATUS_NO_CONTENT;
 	ret = dir_delete_object(req, req->bucket, req->object);
 	if (ret < 0) {
 		switch (ret) {
@@ -100,15 +89,10 @@ char *delete_object(struct s3gw_request *req, struct s3gw_response *resp,
 			resp->status = HTTP_STATUS_BAD_REQUEST;
 			break;
 		}
-		return NULL;
+		return;
 	}
+	resp->status = HTTP_STATUS_NO_CONTENT;
 	put_response_header(resp, "x-amz-delete-marker", "true");
-	buf = gen_response_header(resp, &ret);
-	if (buf)
-		*outlen = ret;
-	else
-		resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
-	return buf;
 }
 
 void xml_delete_list(struct s3gw_request *req, xmlNode *root,
@@ -167,28 +151,26 @@ void xml_delete_list(struct s3gw_request *req, xmlNode *root,
 	}
 }
 
-char *delete_objects(struct s3gw_request *req, struct s3gw_response *resp,
-		     int *outlen)
+void delete_objects(struct s3gw_request *req, struct s3gw_response *resp)
 {
 	struct linked_list top;
 	struct s3gw_object *obj, *tmp;
 	xmlDoc *doc;
 	xmlNs *ns;
 	xmlNode *root, *node;
-	char *buf;
 	int xml_len, ret;
 
 	INIT_LINKED_LIST(&top);
 	if (!req->xml) {
 		if (!req->payload) {
 			resp->status = HTTP_STATUS_BAD_REQUEST;
-			return NULL;
+			return;
 		}
 		req->xml = xmlParseMemory((char *)req->payload,
 					  req->payload_len);
 		if (!req->xml) {
 			resp->status = HTTP_STATUS_BAD_REQUEST;
-			return NULL;
+			return;
 		}
 	}
 	root = xmlDocGetRootElement(req->xml);
@@ -252,18 +234,9 @@ char *delete_objects(struct s3gw_request *req, struct s3gw_response *resp,
 	resp->payload_len = xml_len;
 	xmlFreeDoc(doc);
 	resp->status = HTTP_STATUS_OK;
-
-	buf = gen_response_header(resp, &ret);
-	if (buf)
-		*outlen = ret;
-	else
-		resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
-
-	return buf;
 }
 
-char *list_objects(struct s3gw_request *req, struct s3gw_response *resp,
-		   int *outlen)
+void list_objects(struct s3gw_request *req, struct s3gw_response *resp)
 {
 	struct linked_list top;
 	struct s3gw_object *o, *t;
@@ -271,9 +244,9 @@ char *list_objects(struct s3gw_request *req, struct s3gw_response *resp,
 	xmlDoc *doc;
 	xmlNsPtr ns;
 	xmlNode *root_node, *c_node, *o_node;
-	char *buf, *prefix = NULL;
+	char *prefix = NULL;
 	char line[64];
-	int ret, cur = 0, num, line_len, xml_len;
+	int cur = 0, num, line_len, xml_len;
 	unsigned long max_keys = 0;
 	struct tm *tm;
 
@@ -284,7 +257,7 @@ char *list_objects(struct s3gw_request *req, struct s3gw_response *resp,
 			resp->status = HTTP_STATUS_FORBIDDEN;
 		else
 			resp->status = HTTP_STATUS_NOT_FOUND;
-		return NULL;
+		return;
 	}
 	printf("found %d objects\n", num);
 
@@ -360,22 +333,13 @@ char *list_objects(struct s3gw_request *req, struct s3gw_response *resp,
 	resp->payload_len = xml_len;
 	xmlFreeDoc(doc);
 	resp->status = HTTP_STATUS_OK;
-
-	buf = gen_response_header(resp, &ret);
-	if (buf)
-		*outlen = ret;
-	else
-		resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
-	return buf;
 }
 
-char *get_object(struct s3gw_request *req, struct s3gw_response *resp,
-		 int *outlen)
+void get_object(struct s3gw_request *req, struct s3gw_response *resp)
 {
 	struct s3gw_object *obj;
 	char line[64];
 	struct tm *tm;
-	char *buf;
 	int ret;
 	char *etag;
 	size_t etag_len;
@@ -383,7 +347,7 @@ char *get_object(struct s3gw_request *req, struct s3gw_response *resp,
 	obj = malloc(sizeof(*obj));
 	if (!obj) {
 		resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
-		return NULL;
+		return;
 	}
 	ret = dir_fetch_object(req, obj, req->bucket, req->object);
 	if (ret < 0) {
@@ -404,17 +368,11 @@ char *get_object(struct s3gw_request *req, struct s3gw_response *resp,
 		goto out_free_obj;
 	}
 	put_response_header(resp, "ETag", etag);
-	buf = gen_response_header(resp, &ret);
-	if (buf) {
-		if (req->op == S3_OP_GetObject) {
-			resp->obj = obj;
-			resp->payload = resp->obj->map;
-			resp->payload_len = resp->obj->size;
-			obj = NULL;
-		}
-		*outlen = ret;
-	} else {
-		resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
+	if (req->op == S3_OP_GetObject) {
+		resp->obj = obj;
+		resp->payload = resp->obj->map;
+		resp->payload_len = resp->obj->size;
+		obj = NULL;
 	}
 	free(etag);
 out_free_obj:
@@ -422,11 +380,10 @@ out_free_obj:
 		clear_object(obj);
 		free(obj);
 	}
-	return buf;
 }
 
-char *copy_object(struct s3gw_request *req, struct s3gw_response *resp,
-		  const char *source, int *outlen)
+void copy_object(struct s3gw_request *req, struct s3gw_response *resp,
+		 const char *source)
 {
 	struct s3gw_object *obj;
 	char *bucket, *b, *o, *e, *save;
@@ -435,7 +392,6 @@ char *copy_object(struct s3gw_request *req, struct s3gw_response *resp,
 	xmlNs *ns;
 	xmlNode *root;
 	struct tm *tm;
-	char *buf = NULL;
 	int ret, xml_len;
 	char *etag;
 	size_t etag_len;
@@ -443,7 +399,7 @@ char *copy_object(struct s3gw_request *req, struct s3gw_response *resp,
 	obj = malloc(sizeof(*obj));
 	if (!obj) {
 		resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
-		return NULL;
+		return;
 	}
 	memset(obj, 0, sizeof(*obj));
 
@@ -506,20 +462,9 @@ char *copy_object(struct s3gw_request *req, struct s3gw_response *resp,
 	xmlDocDumpMemory(doc, &resp->payload, &xml_len);
 	xmlFreeDoc(doc);
 	resp->payload_len = xml_len;
-	clear_object(obj);
-	free(obj);
-
-	buf = gen_response_header(resp, &ret);
-	if (buf)
-		*outlen = ret;
-	else
-		resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
-	return buf;
 out_free_obj:
 	clear_object(obj);
 	free(obj);
-
-	return NULL;
 }
 
 void reset_object(struct s3gw_object *obj)
