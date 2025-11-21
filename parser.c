@@ -181,30 +181,16 @@ static int parse_url(http_parser *http, const char *at, size_t len)
 int parse_header_complete(http_parser *http)
 {
 	struct s3gw_request *req = http->data;
-	struct s3gw_header *hdr;
-	char *host;
+	char *len_str;
+	int ret;
 
-	list_for_each_entry(hdr, &req->hdr_list, list) {
-		printf("header '%s': %s\n", hdr->key, hdr->value);
-		if (!strcmp(hdr->key, "Host")) {
-			host = hdr->value;
-			break;
-		}
-		if (!strcmp(hdr->key, "Content-Length")) {
-			int ret;
-			char *eptr;
+	len_str = fetch_request_header(req, "Content-Length", &ret);
+	if (ret) {
+		char *eptr;
 
-			ret = strtoul(hdr->value, &eptr, 10);
-			if (eptr != hdr->value) {
-				if (req->payload_len)
-					printf("overriding payload length\n");
-				req->payload_len = ret;
-			}
-		}
-	}
-	if (http->method == HTTP_GET) {
-		printf("GET from %s\n", host);
-		return 1;
+		ret = strtoul(len_str, &eptr, 10);
+		if (eptr != len_str)
+			req->payload_len = ret;
 	}
 	return 0;
 }
