@@ -13,21 +13,6 @@
 #include "s3_api.h"
 #include "s3gw.h"
 
-static void print_xml(xmlNode *node)
-{
-	xmlNode *cur = NULL;
-
-	for (cur = node; cur; cur = cur->next) {
-		if (cur->type == XML_ELEMENT_NODE)
-			printf("xml node '%s'\n",
-			       cur->name);
-		else if (cur->type == XML_TEXT_NODE)
-			printf("xml text '%s': '%s'\n",
-			       cur->name, cur->content);
-		print_xml(cur->children);
-	}
-}
-
 static int parse_xml(http_parser *http, const char *body, size_t len)
 {
 	struct s3gw_request *req = http->data;
@@ -50,7 +35,6 @@ static int parse_xml(http_parser *http, const char *body, size_t len)
 		return 0;
 	}
 	root = xmlDocGetRootElement(req->xml);
-	print_xml(root);
 	xmlDocDumpMemory(req->xml, &out, &out_len);
 	printf("%s", out);
 	free(out);
