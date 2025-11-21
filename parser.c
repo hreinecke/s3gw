@@ -13,30 +13,21 @@
 #include "s3_api.h"
 #include "s3gw.h"
 
-static int parse_xml(http_parser *http, const char *body, size_t len)
+static int parse_body(http_parser *http, const char *body, size_t len)
 {
 	struct s3gw_request *req = http->data;
-	xmlNode *root;
 	unsigned char *out;
 	int out_len;
 
 	if (!len)
 		return 0;
-	if (req->op == S3_OP_PutObject) {
-		req->payload = malloc(len + 1);
-		memset(req->payload, 0, len + 1);
-		memcpy(req->payload, body, len);
-		printf("body:\n%s\n", req->payload);
-		return 0;
-	}
 	req->xml = xmlParseMemory(body, len);
 	if (!req->xml) {
-		fprintf(stderr, "failed to parse body\n");
+		fprintf(stderr, "failed to parse xml body\n");
 		return 0;
 	}
-	root = xmlDocGetRootElement(req->xml);
 	xmlDocDumpMemory(req->xml, &out, &out_len);
-	printf("%s", out);
+	printf("body:\n%s", out);
 	free(out);
 	return 0;
 }
@@ -221,7 +212,7 @@ int parse_header_complete(http_parser *http)
 void setup_parser(http_parser_settings *settings)
 {
   	memset(settings, 0, sizeof(*settings));
-	settings->on_body = parse_xml;
+	settings->on_body = parse_body;
 	settings->on_header_field = parse_header;
 	settings->on_header_value = parse_header_value;
 	settings->on_headers_complete = parse_header_complete;
