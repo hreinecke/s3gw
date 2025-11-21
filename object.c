@@ -20,7 +20,8 @@ char *create_object(struct s3gw_request *req, struct s3gw_response *resp,
 		    int *outlen)
 {
 	struct s3gw_object *obj;
-	bool create = false;
+	char *etag, *buf;
+	size_t etag_len;
 	int ret;
 
 	if (!req->payload_len && !resp->obj) {
@@ -39,7 +40,6 @@ char *create_object(struct s3gw_request *req, struct s3gw_response *resp,
 			resp->status = HTTP_STATUS_CONTINUE;
 		else
 			resp->status = HTTP_STATUS_OK;
-		create = true;
 	} else {
 		resp->status = HTTP_STATUS_OK;
 		req->payload_len = 0;
@@ -57,11 +57,30 @@ char *create_object(struct s3gw_request *req, struct s3gw_response *resp,
 			resp->status = HTTP_STATUS_BAD_REQUEST;
 			break;
 		}
-	} else if (create && !req->payload_len) {
-		resp->payload = resp->obj->map;
-		resp->payload_len = resp->obj->size;
+		return NULL;
 	}
-	return NULL;
+	if (resp->status == HTTP_STATUS_CONTINUE)
+		return NULL;
+
+	etag = bin2hex(resp->obj->etag, 16, &etag_len);
+	if (!etag) {
+		resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
+		goto out_free_obj;
+	}
+	put_response_header(resp, "ETag", etag);
+	free(etag);
+	buf = gen_response_header(resp, &ret);
+	if (buf)
+		*outlen = ret;
+	else
+		resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
+
+out_free_obj:
+	clear_object(resp->obj);
+	free(resp->obj);
+	resp->obj = NULL;
+
+	return buf;
 }
 
 char *delete_object(struct s3gw_request *req, struct s3gw_response *resp,
@@ -371,8 +390,6 @@ char *get_object(struct s3gw_request *req, struct s3gw_response *resp,
 	tm = localtime(&obj->mtime);
 	strftime(line, 64, "%FT%T%z", tm);
 	put_response_header(resp, "Last-Modified", line);
-	sprintf(line, "%lu", obj->size);
-	put_response_header(resp, "Content-Length", line);
 	etag = bin2hex(obj->etag, 16, &etag_len);
 	if (!etag) {
 		resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
