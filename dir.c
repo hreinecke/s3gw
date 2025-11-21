@@ -408,14 +408,14 @@ int dir_splice_objects(struct s3gw_request *req,
 		goto out_close_dest;
 	}
 	d_map = mmap(NULL, st.st_size, PROT_WRITE | PROT_READ,
-		     MAP_PRIVATE, d_fd, 0);
+		     MAP_SHARED, d_fd, 0);
 	if (d_map == MAP_FAILED) {
 		fprintf(stderr, "%s: mmap destination object %s/%s error %d\n",
 			__func__, d_bucket, d_obj, errno);
 		goto out_unmap_source;
 	}
 	memcpy(d_map, s_map, st.st_size);
-	msync(d_map, st.st_size, MS_SYNC);
+	msync(d_map, st.st_size, MS_SYNC | MS_INVALIDATE);
 	munmap(d_map, st.st_size);
 out_unmap_source:
 	munmap(s_map, st.st_size);
