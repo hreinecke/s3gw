@@ -230,19 +230,59 @@ int dir_find_buckets(struct s3gw_request *req, struct linked_list *head)
 	return num;
 }
 
-/*
- * Three possible states:
- * 1) obj->map == NULL && payload_len:
- *    -> create object with size 'payload_len'
- *       and map it read/write to obj->map
- * 2) obj->map == NULL && !payload_len:
- *    -> map it read-only to obj->map
- * 3) obj->map != NULL
- *    -> sync and unmap obj->map,
- *       map it read-only to obj->map
- */
-static int fill_object(struct s3gw_object *obj, const char *dirname,
-		       const char *name, size_t payload_len)
+static int _create_object(struct s3gw_object *obj, const char *dirname,
+			  const char *name, size_t payload_len)
+{
+	char *pathname;
+	int fd, ret;
+
+	if (!payload_len)
+		return -EINVAL;
+
+	ret = asprintf(&pathname, "%s/%s", dirname, name);
+	if (ret < 0)
+		return -errno;
+
+	fd = open(pathname, O_RDWR | O_CREAT, 0644);
+	if (fd < 0) {
+		fprintf(stderr, "%s: object %s open error %d\n",
+			__func__, pathname, errno);
+		ret = -errno;
+		goto out_free;
+	}
+	if (lseek(fd, payload_len - 1, SEEK_SET) < 0) {
+		fprintf(stderr, "%s: object %s seek error %d\n",
+			__func__, pathname, errno);
+		ret = -errno;
+		goto out_close;
+	}
+	if (write(fd, "", 1) < 0) {
+		fprintf(stderr, "%s: object %s extend error %d\n",
+			__func__, pathname, errno);
+		ret = -errno;
+		goto out_close;
+	}
+	obj->map = mmap(NULL, payload_len, PROT_READ | PROT_WRITE,
+			MAP_SHARED, fd, 0);
+	if (obj->map == MAP_FAILED) {
+		fprintf(stderr, "%s: object %s mmap error\n",
+			__func__, pathname);
+		ret = -EIO;
+		obj->map = NULL;
+		goto out_close;
+	}
+	obj->size = payload_len;
+	obj->key = strdup(name);
+	printf("Found object '%s'\n", obj->key);
+out_close:
+	close(fd);
+out_free:
+	free(pathname);
+	return ret;
+}
+
+static int _fill_object(struct s3gw_object *obj, const char *dirname,
+			const char *name)
 {
 	char *pathname;
 	unsigned char *etag;
@@ -254,54 +294,18 @@ static int fill_object(struct s3gw_object *obj, const char *dirname,
 		return -errno;
 
 	if (obj->map) {
-		/* Case 3: unmap */
 		msync(obj->map, obj->size, MS_SYNC | MS_INVALIDATE);
 		munmap(obj->map, obj->size);
 		obj->map = NULL;
 		obj->size = 0;
-		payload_len = 0;
 	}
-	if (payload_len)
-		fd = open(pathname, O_RDWR | O_CREAT, 0644);
-	else
-		fd = open(pathname, O_RDONLY);
+	fd = open(pathname, O_RDONLY);
 	if (fd < 0) {
 		fprintf(stderr, "%s: object %s open error %d\n",
 			__func__, pathname, errno);
 		ret = -errno;
 		goto out;
 	}
-	if (payload_len) {
-		/* Case 1: Create and map */
-
-		if (lseek(fd, payload_len - 1, SEEK_SET) < 0) {
-			fprintf(stderr, "%s: object %s seek error %d\n",
-				__func__, pathname, errno);
-			ret = -errno;
-			close(fd);
-			goto out;
-		}
-		if (write(fd, "", 1) < 0) {
-			fprintf(stderr, "%s: object %s extend error %d\n",
-				__func__, pathname, errno);
-			ret = -errno;
-			close(fd);
-			goto out;
-		}
-		obj->map = mmap(NULL, payload_len, PROT_READ | PROT_WRITE,
-				MAP_SHARED, fd, 0);
-		if (obj->map == MAP_FAILED) {
-			fprintf(stderr, "%s: object %s mmap error\n",
-				__func__, pathname);
-			ret = -EIO;
-			close(fd);
-			obj->map = NULL;
-			goto out;
-		}
-		obj->size = payload_len;
-		goto skip_write;
-	}
-	/* Case 2 & 3: map read-only */
 	ret = fstat(fd, &st);
 	if (ret < 0) {
 		fprintf(stderr, "%s: object %s stat error %d\n",
@@ -328,8 +332,9 @@ static int fill_object(struct s3gw_object *obj, const char *dirname,
 	obj->etag = etag;
 	obj->etag_len = etag_len;
 	obj->mtime = st.st_mtime;
-skip_write:
-	obj->key = strdup(name);
+
+	if (!obj->key)
+		obj->key = strdup(name);
 	printf("Found object '%s'\n", obj->key);
 out:		
 	free(pathname);
@@ -348,8 +353,11 @@ int dir_fetch_object(struct s3gw_request *req, struct s3gw_object *obj,
 	if (ret < 0)
 		return -ENOMEM;
 
-	ret = fill_object(obj, dirname, object,
-			  req->payload_len);
+	if (req->payload_len)
+		ret = _create_object(obj, dirname, object,
+				     req->payload_len);
+	else
+		ret = _fill_object(obj, dirname, object);
 	if (ret < 0) {
 		fprintf(stderr, "Cannot %s object '%s', error %d\n",
 			req->payload_len ? "create" : "read", object, -errno);
@@ -514,7 +522,7 @@ int dir_find_objects(struct s3gw_request *req, const char *bucket,
 					break;
 				memset(obj, 0, sizeof(*obj));
 			}
-			ret = fill_object(obj, dirname, se->d_name, 0);
+			ret = _fill_object(obj, dirname, se->d_name);
 			if (!ret) {
 				list_add(&obj->list, head);
 				obj = NULL;
