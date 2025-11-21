@@ -396,7 +396,7 @@ int dir_splice_objects(struct s3gw_request *req,
 			__func__, s_bucket, s_obj, errno);
 		goto out_close_dest;
 	}
-	if (lseek(d_fd, st.st_size, SEEK_SET) < 0) {
+	if (lseek(d_fd, st.st_size - 1, SEEK_SET) < 0) {
 		fprintf(stderr, "%s: lseek destination object %s/%s error %d\n",
 			__func__, d_bucket, d_obj, errno);
 		goto out_close_dest;
