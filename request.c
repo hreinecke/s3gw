@@ -158,6 +158,8 @@ static int write_request(struct s3gw_request *req, char *buf, size_t len,
 	return SSL_write_ex(req->ssl, buf, len, outlen);
 }
 
+static char error_response[] = "HTTP/1.1 503 Service Unavailable\r\n\r\n";
+
 size_t handle_request(struct s3gw_request *req, struct s3gw_response *resp)
 {
 	char *resp_hdr, buf[8192];
@@ -188,7 +190,8 @@ size_t handle_request(struct s3gw_request *req, struct s3gw_response *resp)
 	if (ret == 0 || http->http_errno) {
 		fprintf(stderr, "failed to parse HTTP, errno %d\n",
 			http->http_errno);
-		return 0;
+		req = NULL;
+		goto format_response;
 	}
 	if (ret < nread)
 		printf("%ld trailing bytes on input\n", nread - ret);
@@ -233,7 +236,8 @@ format_response:
 	resp_hdr = format_response(req, resp, &resp_len);
 	if (!resp_hdr) {
 		fprintf(stderr, "Error formatting response\n");
-		return 0;
+		resp_hdr = error_response;
+		resp_len = strlen(error_response);
 	}
 	printf("Response (len %d + %lu):\n%s\n",
 	       resp_len, resp->payload_len, resp_hdr);
@@ -281,7 +285,8 @@ format_response:
 		resp->obj = NULL;
 	}
 out_free:
-	free(resp_hdr);
+	if (resp_hdr != error_response)
+		free(resp_hdr);
 	return total;
 }
 

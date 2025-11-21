@@ -133,6 +133,11 @@ char *format_response(struct s3gw_request *req, struct s3gw_response *resp,
 	char *buf = NULL, *source = NULL;
 	int len;
 
+	if (!req) {
+		buf = put_status(HTTP_STATUS_BAD_REQUEST, NULL, outlen);
+		return buf;
+	}
+
 	if (check_authorization(req) < 0) {
 		buf = put_status(HTTP_STATUS_FORBIDDEN, NULL, outlen);
 		return buf;
@@ -173,6 +178,6 @@ char *format_response(struct s3gw_request *req, struct s3gw_response *resp,
 		}
 	}
 	if (!buf)
-		buf = put_status(resp->status, NULL, outlen);
+		buf = gen_response_header(resp, outlen);
 	return buf;
 }
