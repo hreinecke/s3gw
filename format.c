@@ -68,6 +68,8 @@ char *gen_response_header(struct s3gw_response *resp, int *outlen)
 		}
 		off += ret;
 	}
+	ret = sprintf(header + off, "\r\n");
+	off += ret;
 	*outlen = off;
 	return header;
 }

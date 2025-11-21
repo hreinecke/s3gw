@@ -94,6 +94,12 @@ except Exception as e:
     pass
 print(f'{resp}')
 
+resp = s3_client.list_objects_v2(
+    Bucket='s3gw-test-bucket-1',
+    MaxKeys=100,
+    Prefix='server')
+print(f'{resp}')
+
 try:
     resp = s3_client.delete_objects(
         Bucket='s3gw-test-bucket-1',

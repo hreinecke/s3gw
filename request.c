@@ -253,6 +253,8 @@ format_response:
 	if (resp->status == HTTP_STATUS_CONTINUE)
 		goto read_payload;
 	if (resp->payload) {
+		if (!resp->obj)
+			printf("Payload:\n%s\n", resp->payload);
 		ret = write_request(req, (char *)resp->payload,
 				    resp->payload_len, &nwritten);
 		if (ret < 0) {
