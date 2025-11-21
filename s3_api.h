@@ -25,7 +25,7 @@ enum s3_api_ops {
 	S3_OP_PutBucketPolicy, /* NI */
 	S3_OP_GetBucketPolicy, /* NI */
 	S3_OP_DeleteBucketPolicy, /* NI */
-	S3_OP_GetBucketPolicyStatus, /* NI */
+	S3_OP_GetBucketPolicyStatus,
 	S3_OP_GetBucketVersioning,
 	S3_OP_PutObject,
 	S3_OP_CopyObject,

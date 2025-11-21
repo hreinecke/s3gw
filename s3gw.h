@@ -120,6 +120,7 @@ void delete_bucket(struct s3gw_request *req,  struct s3gw_response *resp);
 void list_buckets(struct s3gw_request *req,  struct s3gw_response *resp);
 void check_bucket(struct s3gw_request *req,  struct s3gw_response *resp);
 void bucket_versioning(struct s3gw_request *req,  struct s3gw_response *resp);
+void bucket_policy_status(struct s3gw_request *req, struct s3gw_response *resp);
 
 /* object.c */
 void create_object(struct s3gw_request *req, struct s3gw_response *resp);

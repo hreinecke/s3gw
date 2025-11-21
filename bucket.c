@@ -186,3 +186,22 @@ void bucket_versioning(struct s3gw_request *req, struct s3gw_response *resp)
 	xmlFreeDoc(doc);
 	resp->status = HTTP_STATUS_OK;
 }
+
+void bucket_policy_status(struct s3gw_request *req, struct s3gw_response *resp)
+{
+	xmlDoc *doc;
+	xmlNode *node;
+	int xml_len;
+
+	doc = xmlNewDoc((const xmlChar *)"1.0");
+	node = xmlNewDocNode(doc, NULL,
+			     (const xmlChar *)"PolicyStatus",
+			     NULL);
+	xmlDocSetRootElement(doc, node);
+	xmlNewChild(node, NULL, (const xmlChar *)"IsPublic",
+		    (xmlChar *)"False");
+	xmlDocDumpMemory(doc, &resp->payload, &xml_len);
+	resp->payload_len = xml_len;
+	xmlFreeDoc(doc);
+	resp->status = HTTP_STATUS_OK;
+}

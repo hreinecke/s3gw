@@ -96,6 +96,7 @@ static struct s3gw_op_handler op_handler_list[] = {
 	{ S3_OP_ListBuckets, list_buckets },
 	{ S3_OP_HeadBucket, check_bucket },
 	{ S3_OP_GetBucketVersioning, bucket_versioning },
+	{ S3_OP_GetBucketPolicyStatus, bucket_policy_status },
 	{ S3_OP_PutObject, create_object },
 	{ S3_OP_DeleteObject, delete_object },
 	{ S3_OP_DeleteObjects, delete_objects },
@@ -133,6 +134,10 @@ char *format_response(struct s3gw_request *req, struct s3gw_response *resp,
 		query = fetch_request_query(req, "versioning", &len);
 		if (query) {
 			req->op = S3_OP_GetBucketVersioning;
+		}
+		query = fetch_request_query(req, "policyStatus", &len);
+		if (query) {
+			req->op = S3_OP_GetBucketPolicyStatus;
 		}
 	}
 
