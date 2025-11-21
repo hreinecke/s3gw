@@ -28,26 +28,19 @@ void create_object(struct s3gw_request *req, struct s3gw_response *resp)
 		return;
 	}
 	if (!resp->obj) {
-		obj = malloc(sizeof(*obj));
-		if (!obj) {
+		resp->obj = malloc(sizeof(*obj));
+		if (!resp->obj) {
 			resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
 			return;
 		}
-		memset(obj, 0, sizeof(*obj));
-		resp->obj = obj;
-		if (req->payload_len)
-			resp->status = HTTP_STATUS_CONTINUE;
-		else
-			resp->status = HTTP_STATUS_OK;
+		memset(resp->obj, 0, sizeof(*resp->obj));
+		ret = dir_create_object(req, resp->obj, req->object);
+		resp->status = HTTP_STATUS_CONTINUE;
 	} else {
+		ret = dir_fetch_object(req, resp->obj, req->object);
 		resp->status = HTTP_STATUS_OK;
-		req->payload_len = 0;
 	}
-	ret = dir_fetch_object(req, resp->obj, req->object);
 	if (ret < 0) {
-		clear_object(resp->obj);
-		free(resp->obj);
-		resp->obj = NULL;
 		switch (ret) {
 		case -EEXIST:
 			resp->status = HTTP_STATUS_CONFLICT;
@@ -56,7 +49,7 @@ void create_object(struct s3gw_request *req, struct s3gw_response *resp)
 			resp->status = HTTP_STATUS_BAD_REQUEST;
 			break;
 		}
-		return;
+		goto out_free_obj;
 	}
 	if (resp->status == HTTP_STATUS_CONTINUE)
 		return;

@@ -281,6 +281,24 @@ out_free:
 	return ret;
 }
 
+int dir_create_object(struct s3gw_request *req, struct s3gw_object *obj,
+		      const char *object)
+{
+	char *dirname;
+	int ret;
+
+	ret = asprintf(&dirname, "%s/%s/%s",
+		       req->ctx->base_dir,
+		       req->owner, req->bucket);
+	if (ret < 0)
+		return -ENOMEM;
+
+	ret = _create_object(obj, dirname, object,
+			     req->payload_len);
+	free(dirname);
+	return ret;
+}
+
 static int _fill_object(struct s3gw_object *obj, const char *dirname,
 			const char *name)
 {
@@ -353,15 +371,7 @@ int dir_fetch_object(struct s3gw_request *req, struct s3gw_object *obj,
 	if (ret < 0)
 		return -ENOMEM;
 
-	if (req->payload_len)
-		ret = _create_object(obj, dirname, object,
-				     req->payload_len);
-	else
-		ret = _fill_object(obj, dirname, object);
-	if (ret < 0) {
-		fprintf(stderr, "Cannot %s object '%s', error %d\n",
-			req->payload_len ? "create" : "read", object, -errno);
-	}
+	ret = _fill_object(obj, dirname, object);
 	free(dirname);
 	return ret;
 }
