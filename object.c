@@ -331,9 +331,10 @@ void list_objects(struct s3gw_request *req, struct s3gw_response *resp)
 void get_object(struct s3gw_request *req, struct s3gw_response *resp)
 {
 	struct s3gw_object *obj;
-	char line[64];
+	char line[64], *range;
 	struct tm *tm;
-	int ret;
+	unsigned long start = 0, end = 0, size = 0;
+	int ret, range_len;
 	char *etag;
 	size_t etag_len;
 
@@ -352,6 +353,43 @@ void get_object(struct s3gw_request *req, struct s3gw_response *resp)
 	}
 	resp->status = HTTP_STATUS_OK;
 
+	range = fetch_request_header(req, "Range", &range_len);
+	if (range) {
+		char *s, *e, *eptr;
+
+		if (strncmp(range, "bytes", 5)) {
+			fprintf(stderr, "Only byte ranges are supported\n");
+			resp->status = HTTP_STATUS_BAD_REQUEST;
+			goto out_free_obj;
+		}
+		s = strdup(range + 6);
+		e = strchr(s, '-');
+		if (e)
+			*e++ = '\0';
+		start = strtoul(s, &eptr, 10);
+		if (s == eptr) {
+			fprintf(stderr, "Invalid range '%s'\n", range);
+			resp->status = HTTP_STATUS_BAD_REQUEST;
+			goto out_free_obj;
+		}
+		if (e && strlen(e)) {
+			end = strtoul(e, &eptr, 10);
+			if (e == eptr) {
+				fprintf(stderr, "Invalid range '%s'\n",
+					range);
+				resp->status = HTTP_STATUS_BAD_REQUEST;
+				goto out_free_obj;
+			}
+			if (end < start) {
+				fprintf(stderr, "Invalid range '%s'\n",
+					range);
+				resp->status = HTTP_STATUS_BAD_REQUEST;
+				goto out_free_obj;
+			}
+			size = start - end;
+		}
+	}
+
 	tm = localtime(&obj->mtime);
 	strftime(line, 64, "%FT%T%z", tm);
 	put_response_header(resp, "Last-Modified", line);
@@ -362,9 +400,15 @@ void get_object(struct s3gw_request *req, struct s3gw_response *resp)
 	}
 	put_response_header(resp, "ETag", etag);
 	if (req->op == S3_OP_GetObject) {
+		if (!end)
+			size = resp->obj->size - start;
+		else if (end - start < resp->obj->size)
+			size = end - start;
+		else
+			size = resp->obj->size;
 		resp->obj = obj;
-		resp->payload = resp->obj->map;
-		resp->payload_len = resp->obj->size;
+		resp->payload = resp->obj->map + start;
+		resp->payload_len = size;
 		obj = NULL;
 	}
 	free(etag);
