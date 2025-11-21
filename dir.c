@@ -337,14 +337,14 @@ out:
 }
 
 int dir_fetch_object(struct s3gw_request *req, struct s3gw_object *obj,
-		     const char *bucket, const char *object)
+		     const char *object)
 {
 	char *dirname;
 	int ret;
 
 	ret = asprintf(&dirname, "%s/%s/%s",
 		       req->ctx->base_dir,
-		       req->owner, bucket);
+		       req->owner, req->bucket);
 	if (ret < 0)
 		return -ENOMEM;
 

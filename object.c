@@ -43,7 +43,7 @@ void create_object(struct s3gw_request *req, struct s3gw_response *resp)
 		resp->status = HTTP_STATUS_OK;
 		req->payload_len = 0;
 	}
-	ret = dir_fetch_object(req, resp->obj, req->bucket, req->object);
+	ret = dir_fetch_object(req, resp->obj, req->object);
 	if (ret < 0) {
 		clear_object(resp->obj);
 		free(resp->obj);
@@ -120,7 +120,7 @@ void xml_delete_list(struct s3gw_request *req, xmlNode *root,
 		}
 		list_add(&obj->list, head);
 		if (node) {
-			ret = dir_fetch_object(req, obj, req->bucket,
+			ret = dir_fetch_object(req, obj,
 					       (const char *)node->content);
 			if (ret < 0)
 				obj->error = ret;
@@ -349,7 +349,7 @@ void get_object(struct s3gw_request *req, struct s3gw_response *resp)
 		resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
 		return;
 	}
-	ret = dir_fetch_object(req, obj, req->bucket, req->object);
+	ret = dir_fetch_object(req, obj, req->object);
 	if (ret < 0) {
 		if (ret == -EPERM)
 			resp->status = HTTP_STATUS_FORBIDDEN;
@@ -429,7 +429,7 @@ void copy_object(struct s3gw_request *req, struct s3gw_response *resp,
 		goto out_free_obj;
 	}
 	free(bucket);
-	ret = dir_fetch_object(req, obj, req->bucket, req->object);
+	ret = dir_fetch_object(req, obj, req->object);
 	if (ret < 0) {
 		if (ret == -EPERM)
 			resp->status = HTTP_STATUS_FORBIDDEN;
