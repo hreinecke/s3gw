@@ -198,14 +198,23 @@ size_t handle_request(struct s3gw_request *req, struct s3gw_response *resp)
 		goto format_response;
 	}
 read_payload:
-	if (req->payload_len && !req->payload && !req->xml) {
+	if (req->payload_len && !req->xml) {
 		size_t plen;
-		printf("reading %ld bytes of payload\n",
-		       req->payload_len);
-		req->payload = malloc(req->payload_len);
+
+		if (resp->obj) {
+			printf("streaming %ld bytes of payload\n",
+			       req->payload_len);
+			req->payload = resp->obj->map;
+		} else {
+			printf("reading %ld bytes of payload\n",
+			       req->payload_len);
+			req->payload = malloc(req->payload_len);
+		}
 		ret = read_request(req, (char *)req->payload,
 				   req->payload_len, &plen, true);
 		nread += plen;
+		if (resp->obj)
+			req->payload = NULL;
 		if (ret < 0) {
 			fprintf(stderr,
 				"Error %d after reading %lu bytes payload\n",
@@ -225,12 +234,6 @@ format_response:
 	if (!resp_hdr) {
 		fprintf(stderr, "Error formatting response\n");
 		return 0;
-	}
-	if (resp->obj) {
-		if (resp->payload)
-			fprintf(stderr, "Response payload already set!\n");
-		resp->payload = resp->obj->map;
-		resp->payload_len = resp->obj->size;
 	}
 	printf("Response (len %d + %lu):\n%s\n",
 	       resp_len, resp->payload_len, resp_hdr);
@@ -253,8 +256,7 @@ format_response:
 	if (resp->status == HTTP_STATUS_CONTINUE)
 		goto read_payload;
 	if (resp->payload) {
-		if (!resp->obj)
-			printf("Payload:\n%s\n", resp->payload);
+		printf("Payload:\n%s\n", resp->payload);
 		ret = write_request(req, (char *)resp->payload,
 				    resp->payload_len, &nwritten);
 		if (ret < 0) {
@@ -271,6 +273,7 @@ format_response:
 		total += nwritten;
 	}
 	if (resp->obj) {
+		printf("Clear response object\n");
 		resp->payload = NULL;
 		resp->payload_len = 0;
 		clear_object(resp->obj);

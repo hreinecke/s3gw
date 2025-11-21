@@ -19,16 +19,36 @@ static xmlChar xmlns[] =
 char *create_object(struct s3gw_request *req, struct s3gw_response *resp,
 		    int *outlen)
 {
-	struct s3gw_object obj;
+	struct s3gw_object *obj;
+	bool create = false;
 	int ret;
 
-	memset(&obj, 0, sizeof(obj));
-	if (req->payload_len && !req->payload)
-		resp->status = HTTP_STATUS_CONTINUE;
-	else
+	if (!req->payload_len && !resp->obj) {
+		resp->status = HTTP_STATUS_BAD_REQUEST;
+		return NULL;
+	}
+	if (!resp->obj) {
+		obj = malloc(sizeof(*obj));
+		if (!obj) {
+			resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
+			return NULL;
+		}
+		memset(obj, 0, sizeof(*obj));
+		resp->obj = obj;
+		if (req->payload_len)
+			resp->status = HTTP_STATUS_CONTINUE;
+		else
+			resp->status = HTTP_STATUS_OK;
+		create = true;
+	} else {
 		resp->status = HTTP_STATUS_OK;
-	ret = dir_fetch_object(req, &obj, req->bucket, req->object);
+		req->payload_len = 0;
+	}
+	ret = dir_fetch_object(req, resp->obj, req->bucket, req->object);
 	if (ret < 0) {
+		clear_object(resp->obj);
+		free(resp->obj);
+		resp->obj = NULL;
 		switch (ret) {
 		case -EEXIST:
 			resp->status = HTTP_STATUS_CONFLICT;
@@ -37,8 +57,10 @@ char *create_object(struct s3gw_request *req, struct s3gw_response *resp,
 			resp->status = HTTP_STATUS_BAD_REQUEST;
 			break;
 		}
+	} else if (create && !req->payload_len) {
+		resp->payload = resp->obj->map;
+		resp->payload_len = resp->obj->size;
 	}
-	clear_object(&obj);
 	return NULL;
 }
 
@@ -361,6 +383,8 @@ char *get_object(struct s3gw_request *req, struct s3gw_response *resp,
 	if (buf) {
 		if (req->op == S3_OP_GetObject) {
 			resp->obj = obj;
+			resp->payload = resp->obj->map;
+			resp->payload_len = resp->obj->size;
 			obj = NULL;
 		}
 		*outlen = ret;
