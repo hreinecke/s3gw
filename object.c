@@ -86,6 +86,7 @@ out_free_obj:
 char *delete_object(struct s3gw_request *req, struct s3gw_response *resp,
 		    int *outlen)
 {
+	char *buf;
 	int ret;
 
 	resp->status = HTTP_STATUS_NO_CONTENT;
@@ -99,8 +100,15 @@ char *delete_object(struct s3gw_request *req, struct s3gw_response *resp,
 			resp->status = HTTP_STATUS_BAD_REQUEST;
 			break;
 		}
+		return NULL;
 	}
-	return NULL;
+	put_response_header(resp, "x-amz-delete-marker", "true");
+	buf = gen_response_header(resp, &ret);
+	if (buf)
+		*outlen = ret;
+	else
+		resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
+	return buf;
 }
 
 void xml_delete_list(struct s3gw_request *req, xmlNode *root,
@@ -498,17 +506,20 @@ char *copy_object(struct s3gw_request *req, struct s3gw_response *resp,
 	xmlDocDumpMemory(doc, &resp->payload, &xml_len);
 	xmlFreeDoc(doc);
 	resp->payload_len = xml_len;
+	clear_object(obj);
+	free(obj);
 
 	buf = gen_response_header(resp, &ret);
 	if (buf)
 		*outlen = ret;
 	else
 		resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
+	return buf;
 out_free_obj:
 	clear_object(obj);
 	free(obj);
 
-	return buf;
+	return NULL;
 }
 
 void reset_object(struct s3gw_object *obj)
