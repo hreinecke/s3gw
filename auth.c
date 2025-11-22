@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <string.h>
+#include <ctype.h>
 
 #include <openssl/err.h>
 #include <openssl/evp.h>
@@ -131,6 +132,74 @@ err_free:
 	goto cleanup;
 }
 
+/*
+ * auth_uri_encode - URI encode a string
+ *
+ * Following the rules from AWS S3:
+ * Signature Calculations for the Authorization Header:
+ * Transferring Payload in a Single Chunk (AWS Signature Version 4)
+ *
+ * URI encode every byte. UriEncode() must enforce the following rules:
+ * -  URI encode every byte except the unreserved characters:
+ *    'A'-'Z', 'a'-'z', '0'-'9', '-', '.', '_', and '~'.
+ *
+ * - The space character is a reserved character and must be encoded as
+ *   "%20" (and not as "+").
+ *
+ * - Each URI encoded byte is formed by a '%' and the two-digit hexadecimal
+ *   value of the byte.
+ *
+ * - Letters in the hexadecimal value must be uppercase, for example "%1A".
+ *
+ * - Encode the forward slash character, '/', everywhere except in the object
+ *   key name. For example, if the object key name is photos/Jan/sample.jpg,
+ *   the forward slash in the key name is not encoded.
+ */
+char *auth_uri_encode(const char *value, bool encode_slash)
+{
+	size_t len = strlen(value), off = 0;
+	char *p, *enc;
+
+	if (!value)
+		return strdup("");
+
+	while (off < strlen(value)) {
+		if ((value[off] >= 'A' && value[off] <= 'Z') ||
+		    (value[off] >= 'a' && value[off] <= 'z') ||
+		    (value[off] >= '0' && value[off] <= '9') ||
+		    value[off] == '-' || value[off] == '.' ||
+		    value[off] == '_' || value[off] == '~')
+			len++;
+		else if (!encode_slash && value[off] == '/')
+			len++;
+		else
+			len += 3;
+		off ++;
+	}
+	enc = malloc(len + 1);
+	if (!enc)
+		return NULL;
+	memset(enc, 0, len + 1);
+	off = 0;
+	p = enc;
+	while (off < strlen(value)) {
+		if ((value[off] >= 'A' && value[off] <= 'Z') ||
+		    (value[off] >= 'a' && value[off] <= 'z') ||
+		    (value[off] >= '0' && value[off] <= '9') ||
+		    value[off] == '-' || value[off] == '.' ||
+		    value[off] == '_' || value[off] == '~')
+			*p++ = value[off];
+		else if (!encode_slash && value[off] == '/')
+			*p++ value[off];
+		else {
+			sprintf(p, "%%%02X", value[off]);
+			p += 3;
+		}
+		off ++;
+	}
+	return enc;
+}
+
 char *auth_string_to_sign(struct s3gw_request *req, int *out_len)
 {
 	OSSL_LIB_CTX *ctx;
@@ -181,9 +250,9 @@ char *auth_string_to_sign(struct s3gw_request *req, int *out_len)
 	}
 	/* Construct SHA256 hash of the canonical request */
 	list_for_each_entry(hdr, &req->hdr_list, list) {
-		if (!strcmp(hdr->key, "X-Amz-Date"))
+		if (!strcasecmp(hdr->key, "x-amz-date"))
 			tstamp = hdr->value;
-		if (!strcmp(hdr->key, "X-Amz-Content-SHA256"))
+		if (!strcasecmp(hdr->key, "x-amz-content-sha256"))
 			payload_hash = hdr->value;
 	}
 	if (!payload_hash) {
@@ -214,9 +283,12 @@ char *auth_string_to_sign(struct s3gw_request *req, int *out_len)
 		query = malloc(strlen(req->query) + 1);
 		off = 0;
 		list_for_each_entry(hdr, &req->query_list, list) {
+			char *value = auth_uri_encode(hdr->value, true);
+
 			ret = sprintf(query + off, "%s%s=%s",
 				      off == 0 ? "" : "&",
-				      hdr->key, hdr->value ? hdr->value : "");
+				      hdr->key, value);
+			free(value);
 			off += ret;
 		}
 	} else {
@@ -224,6 +296,7 @@ char *auth_string_to_sign(struct s3gw_request *req, int *out_len)
 	}
 	asprintf(&input, "%s\n%s\n%s\n", http_method_str(req->http.method),
 		 req->url, query ? query : "");
+	printf("query: %s\n", query);
 	if (query)
 		free(query);
 	if (EVP_DigestUpdate(md_ctx, input, strlen(input)) != 1) {
