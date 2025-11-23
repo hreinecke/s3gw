@@ -29,13 +29,15 @@ char *bin2hex(unsigned char *input, int input_len, size_t *out_len)
 	return output;
 }
 
-/* hex_to_bin() - copied from linux kernel sources */
 static int hex_to_bin(unsigned char ch)
 {
-        unsigned char cu = ch & 0xdf;
-        return -1 +
-                ((ch - '0' +  1) & (unsigned)((ch - '9' - 1) & ('0' - 1 - ch)) >> 8) +
-                ((cu - 'a' + 11) & (unsigned)((cu - 'f' - 1) & ('a' - 1 - cu)) >> 8);
+	if (ch >= '0' && ch <= '9')
+		return ch - '0' + 1;
+	if (ch >= 'A' && ch <= 'F')
+		return ch - 'A' + 1;
+	if (ch >= 'a' && ch <= 'f')
+		return ch - 'a' + 1;
+	return -1;
 }
 
 unsigned char *hex2bin(char *input, size_t *out_len)
@@ -68,6 +70,107 @@ unsigned char *hex2bin(char *input, size_t *out_len)
 		output = NULL;
 	}
 	return output;
+}
+
+/*
+ * auth_uri_encode - URI encode a string
+ *
+ * Following the rules from AWS S3:
+ * Signature Calculations for the Authorization Header:
+ * Transferring Payload in a Single Chunk (AWS Signature Version 4)
+ *
+ * URI encode every byte. UriEncode() must enforce the following rules:
+ * -  URI encode every byte except the unreserved characters:
+ *    'A'-'Z', 'a'-'z', '0'-'9', '-', '.', '_', and '~'.
+ *
+ * - The space character is a reserved character and must be encoded as
+ *   "%20" (and not as "+").
+ *
+ * - Each URI encoded byte is formed by a '%' and the two-digit hexadecimal
+ *   value of the byte.
+ *
+ * - Letters in the hexadecimal value must be uppercase, for example "%1A".
+ *
+ * - Encode the forward slash character, '/', everywhere except in the object
+ *   key name. For example, if the object key name is photos/Jan/sample.jpg,
+ *   the forward slash in the key name is not encoded.
+ */
+char *uri_encode(const char *value, bool encode_slash)
+{
+	size_t len = strlen(value), off = 0;
+	char *p, *enc;
+
+	if (!value)
+		return strdup("");
+
+	while (off < strlen(value)) {
+		if ((value[off] >= 'A' && value[off] <= 'Z') ||
+		    (value[off] >= 'a' && value[off] <= 'z') ||
+		    (value[off] >= '0' && value[off] <= '9') ||
+		    value[off] == '-' || value[off] == '.' ||
+		    value[off] == '_' || value[off] == '~')
+			len++;
+		else if (!encode_slash && value[off] == '/')
+			len++;
+		else
+			len += 3;
+		off ++;
+	}
+	enc = malloc(len + 1);
+	if (!enc)
+		return NULL;
+	memset(enc, 0, len + 1);
+	off = 0;
+	p = enc;
+	while (off < strlen(value)) {
+		if ((value[off] >= 'A' && value[off] <= 'Z') ||
+		    (value[off] >= 'a' && value[off] <= 'z') ||
+		    (value[off] >= '0' && value[off] <= '9') ||
+		    value[off] == '-' || value[off] == '.' ||
+		    value[off] == '_' || value[off] == '~')
+			*p++ = value[off];
+		else if (!encode_slash && value[off] == '/')
+			*p++ = value[off];
+		else {
+			sprintf(p, "%%%02X", value[off]);
+			p += 3;
+		}
+		off ++;
+	}
+	return enc;
+}
+
+char *uri_decode(const char *value)
+{
+	size_t len = strlen(value), off = 0;
+	char *p, *dec;
+
+	dec = malloc(len + 1);
+	if (!dec)
+		return NULL;
+	memset(dec, 0, len + 1);
+	p = dec;
+	while (off < len) {
+		if (value[off] == '%') {
+			int hi, lo;
+
+			off++;
+			hi = hex_to_bin(value[off]);
+			if (hi < 0)
+				goto decode_err;
+			off++;
+			lo = hex_to_bin(value[off]);
+			if (lo < 0)
+				goto decode_err;
+			*p++ = (hi << 4) | lo;
+		} else
+			*p++ = value[off];
+		off ++;
+	}
+	return dec;
+decode_err:
+	free(dec);
+	return NULL;
 }
 
 unsigned char *md5sum(char *input, int input_len, int *out_len)
@@ -130,74 +233,6 @@ err_free:
 	free(output);
 	output = NULL;
 	goto cleanup;
-}
-
-/*
- * auth_uri_encode - URI encode a string
- *
- * Following the rules from AWS S3:
- * Signature Calculations for the Authorization Header:
- * Transferring Payload in a Single Chunk (AWS Signature Version 4)
- *
- * URI encode every byte. UriEncode() must enforce the following rules:
- * -  URI encode every byte except the unreserved characters:
- *    'A'-'Z', 'a'-'z', '0'-'9', '-', '.', '_', and '~'.
- *
- * - The space character is a reserved character and must be encoded as
- *   "%20" (and not as "+").
- *
- * - Each URI encoded byte is formed by a '%' and the two-digit hexadecimal
- *   value of the byte.
- *
- * - Letters in the hexadecimal value must be uppercase, for example "%1A".
- *
- * - Encode the forward slash character, '/', everywhere except in the object
- *   key name. For example, if the object key name is photos/Jan/sample.jpg,
- *   the forward slash in the key name is not encoded.
- */
-char *auth_uri_encode(const char *value, bool encode_slash)
-{
-	size_t len = strlen(value), off = 0;
-	char *p, *enc;
-
-	if (!value)
-		return strdup("");
-
-	while (off < strlen(value)) {
-		if ((value[off] >= 'A' && value[off] <= 'Z') ||
-		    (value[off] >= 'a' && value[off] <= 'z') ||
-		    (value[off] >= '0' && value[off] <= '9') ||
-		    value[off] == '-' || value[off] == '.' ||
-		    value[off] == '_' || value[off] == '~')
-			len++;
-		else if (!encode_slash && value[off] == '/')
-			len++;
-		else
-			len += 3;
-		off ++;
-	}
-	enc = malloc(len + 1);
-	if (!enc)
-		return NULL;
-	memset(enc, 0, len + 1);
-	off = 0;
-	p = enc;
-	while (off < strlen(value)) {
-		if ((value[off] >= 'A' && value[off] <= 'Z') ||
-		    (value[off] >= 'a' && value[off] <= 'z') ||
-		    (value[off] >= '0' && value[off] <= '9') ||
-		    value[off] == '-' || value[off] == '.' ||
-		    value[off] == '_' || value[off] == '~')
-			*p++ = value[off];
-		else if (!encode_slash && value[off] == '/')
-			*p++ value[off];
-		else {
-			sprintf(p, "%%%02X", value[off]);
-			p += 3;
-		}
-		off ++;
-	}
-	return enc;
 }
 
 char *auth_string_to_sign(struct s3gw_request *req, int *out_len)
@@ -283,7 +318,7 @@ char *auth_string_to_sign(struct s3gw_request *req, int *out_len)
 		query = malloc(strlen(req->query) + 1);
 		off = 0;
 		list_for_each_entry(hdr, &req->query_list, list) {
-			char *value = auth_uri_encode(hdr->value, true);
+			char *value = uri_encode(hdr->value, true);
 
 			ret = sprintf(query + off, "%s%s=%s",
 				      off == 0 ? "" : "&",
