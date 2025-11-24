@@ -344,9 +344,9 @@ void list_objects(struct s3gw_request *req, struct s3gw_response *resp)
 	if (num_buckets) {
 		struct s3gw_bucket *b, *t_b;
 
-		c_node = xmlNewChild(root_node, NULL,
-				     (const xmlChar *)"CommonPrefixes", NULL);
 		list_for_each_entry_safe(b, t_b, &buckets, list) {
+			c_node = xmlNewChild(root_node, NULL,
+				     (const xmlChar *)"CommonPrefixes", NULL);
 			xmlNewChild(c_node, NULL, (const xmlChar *)"Prefix",
 				    (xmlChar *)b->name);
 			list_del_init(&b->list);

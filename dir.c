@@ -180,11 +180,11 @@ static int fill_bucket(char *dirname, char *name, char *delim,
 		ret = -ENOMEM;
 		goto out;
 	}
-	ret = asprintf(&b->name, "%s%s", name, delim ? delim : "");
+	ret = asprintf(&b->name, "%s%s", name + 1, delim ? delim : "");
 	if (ret < 0)
 		goto out;
 	b->ctime = st.st_ctime;
-	list_add(&b->list, head);
+	list_add_tail(&b->list, head);
 	printf("Found bucket '%s'\n", b->name);
 out:		
 	free(pathname);
@@ -224,7 +224,7 @@ int find_bucket(char *dirname, char *prefix, char *delim,
 				goto next_bucket;
 
 			num += ret;
-			ret = fill_bucket(dirname, new_path, NULL, head);
+			ret = fill_bucket(dirname, new_path, delim, head);
 			if (ret < 0)
 				goto next_bucket;
 			num++;
@@ -580,21 +580,15 @@ int dir_find_objects(struct s3gw_request *req, struct linked_list *head,
 int dir_find_prefix(struct s3gw_request *req, struct linked_list *head,
 		    char *prefix, char *delim, char *marker)
 {
-	char *dirname, *p;
-	int ret, num = 0;
+	char *dirname;
+	int ret;
 
-	ret = asprintf(&dirname, "%s/%s",
+	ret = asprintf(&dirname, "%s/%s/%s",
 		       req->ctx->base_dir,
-		       req->owner);
+		       req->owner, req->bucket);
 	if (ret < 0)
 		return -ENOMEM;
-	ret = asprintf(&p, "%s%s", delim, req->bucket);
-	if (ret < 0) {
-		free(dirname);
-		return -ENOMEM;
-	}
-	ret = find_bucket(dirname, p, delim, head);
-	free(p);
+	ret = find_bucket(dirname, NULL, delim, head);
 	free(dirname);
-	return num;
+	return ret;
 }
