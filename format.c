@@ -128,18 +128,6 @@ char *format_response(struct s3gw_request *req, struct s3gw_response *resp,
 			req->op = S3_OP_CopyObject;
 		}
 	}
-	if (req->op == S3_OP_ListObjects) {
-		const char *query;
-
-		query = fetch_request_query(req, "versioning", &len);
-		if (query) {
-			req->op = S3_OP_GetBucketVersioning;
-		}
-		query = fetch_request_query(req, "policyStatus", &len);
-		if (query) {
-			req->op = S3_OP_GetBucketPolicyStatus;
-		}
-	}
 
 	if (req->op == S3_OP_CopyObject) {
 		copy_object(req, resp, source);

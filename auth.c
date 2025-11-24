@@ -331,7 +331,6 @@ char *auth_string_to_sign(struct s3gw_request *req, int *out_len)
 	}
 	asprintf(&input, "%s\n%s\n%s\n", http_method_str(req->http.method),
 		 req->url, query ? query : "");
-	printf("query: %s\n", query);
 	if (query)
 		free(query);
 	if (EVP_DigestUpdate(md_ctx, input, strlen(input)) != 1) {

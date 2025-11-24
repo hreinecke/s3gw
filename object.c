@@ -18,7 +18,6 @@ static xmlChar xmlns[] =
 
 void create_object(struct s3gw_request *req, struct s3gw_response *resp)
 {
-	struct s3gw_object *obj;
 	char *etag;
 	size_t etag_len;
 	int ret;
@@ -28,16 +27,16 @@ void create_object(struct s3gw_request *req, struct s3gw_response *resp)
 		return;
 	}
 	if (!resp->obj) {
-		resp->obj = malloc(sizeof(*obj));
+		resp->obj = malloc(sizeof(*resp->obj));
 		if (!resp->obj) {
 			resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
 			return;
 		}
 		memset(resp->obj, 0, sizeof(*resp->obj));
-		ret = dir_create_object(req, resp->obj, req->object);
+		ret = dir_create_object(req, resp->obj, req->key);
 		resp->status = HTTP_STATUS_CONTINUE;
 	} else {
-		ret = dir_fetch_object(req, resp->obj, req->object);
+		ret = dir_fetch_object(req, resp->obj, req->key);
 		resp->status = HTTP_STATUS_OK;
 	}
 	if (ret < 0) {
@@ -72,7 +71,7 @@ void delete_object(struct s3gw_request *req, struct s3gw_response *resp)
 {
 	int ret;
 
-	ret = dir_delete_object(req, req->bucket, req->object);
+	ret = dir_delete_object(req, req->bucket, req->key);
 	if (ret < 0) {
 		switch (ret) {
 		case -EEXIST:
@@ -343,7 +342,8 @@ void get_object(struct s3gw_request *req, struct s3gw_response *resp)
 		resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
 		return;
 	}
-	ret = dir_fetch_object(req, obj, req->object);
+	memset(obj, 0, sizeof(*obj));
+	ret = dir_fetch_object(req, obj, req->key);
 	if (ret < 0) {
 		if (ret == -EPERM)
 			resp->status = HTTP_STATUS_FORBIDDEN;
@@ -410,6 +410,9 @@ void get_object(struct s3gw_request *req, struct s3gw_response *resp)
 		resp->payload = resp->obj->map + start;
 		resp->payload_len = size;
 		obj = NULL;
+	} else {
+		resp->payload_len = obj->size;
+		resp->obj = NULL;
 	}
 	free(etag);
 out_free_obj:
@@ -459,14 +462,14 @@ void copy_object(struct s3gw_request *req, struct s3gw_response *resp,
 		goto out_free_obj;
 	}
 
-	ret = dir_splice_objects(req, b, o, req->bucket, req->object);
+	ret = dir_splice_objects(req, b, o, req->bucket, req->key);
 	if (ret < 0) {
 		resp->status = HTTP_STATUS_NOT_FOUND;
 		free(bucket);
 		goto out_free_obj;
 	}
 	free(bucket);
-	ret = dir_fetch_object(req, obj, req->object);
+	ret = dir_fetch_object(req, obj, req->bucket);
 	if (ret < 0) {
 		if (ret == -EPERM)
 			resp->status = HTTP_STATUS_FORBIDDEN;

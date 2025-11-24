@@ -130,68 +130,133 @@ static int parse_url(http_parser *http, const char *at, size_t len)
 	printf("urn: %s %s %s\n", method, req->url,
 	       req->query ? req->query : "");
 	if (strlen(req->url) > 1) {
-		char *p;
-
-		req->bucket = strdup(req->url + 1);
-		if (!req->bucket)
+		req->key = strdup(req->url + 1);
+		if (!req->key)
 			return 0;
-		p = strchr(req->bucket, '/');
-		if (p) {
-			*p = '\0';
-			p++;
-			req->object = p;
-		}
 	}
 
 	switch (http->method) {
 	case HTTP_GET:
-		if (!req->bucket)
-			req->op = S3_OP_ListBuckets;
-		else if (!req->object)
-			req->op = S3_OP_ListObjects;
-		else
-			req->op = S3_OP_GetObject;
+		req->op = S3_OP_GetObject;
 		break;
 	case HTTP_HEAD:
-		if (req->object)
-			req->op = S3_OP_HeadObject;
-		else if (req->bucket)
-			req->op = S3_OP_HeadBucket;
+		req->op = S3_OP_HeadObject;
 		break;
 	case HTTP_PUT:
-		if (req->object)
-			req->op = S3_OP_PutObject;
-		else if (req->bucket)
-			req->op = S3_OP_CreateBucket;
+		req->op = S3_OP_PutObject;
 		break;
 	case HTTP_POST:
-		if (req->bucket)
-			req->op = S3_OP_DeleteObjects;
+		req->op = S3_OP_DeleteObjects;
 		break;
 	case HTTP_DELETE:
-		if (req->object)
-			req->op = S3_OP_DeleteObject;
-		else if (req->bucket)
-			req->op = S3_OP_DeleteBucket;
+		req->op = S3_OP_DeleteObject;
 		break;
 	}
 	return 0;
 }
 
+struct s3_op_desc {
+	enum s3_api_ops op;
+	char *desc;
+};
+
+#define OP_STR(o) \
+	{ .op = o, .desc = #o }
+
+struct s3_op_desc s3_ops[] = {
+	OP_STR(S3_OP_Unknown),
+	OP_STR(S3_OP_CreateBucket),
+	OP_STR(S3_OP_HeadBucket),
+	OP_STR(S3_OP_ListBuckets),
+	OP_STR(S3_OP_ListObjects),
+	OP_STR(S3_OP_ListObjectsV2),
+	OP_STR(S3_OP_ListMultipartUploads),
+	OP_STR(S3_OP_DeleteBucket),
+	OP_STR(S3_OP_PutBucketPolicy),
+	OP_STR(S3_OP_GetBucketPolicy),
+	OP_STR(S3_OP_DeleteBucketPolicy),
+	OP_STR(S3_OP_GetBucketPolicyStatus),
+	OP_STR(S3_OP_GetBucketVersioning),
+	OP_STR(S3_OP_PutObject),
+	OP_STR(S3_OP_CopyObject),
+	OP_STR(S3_OP_RestoreObject),
+	OP_STR(S3_OP_GetObject),
+	OP_STR(S3_OP_HeadObject),
+	OP_STR(S3_OP_DeleteObject),
+	OP_STR(S3_OP_DeleteObjects),
+	OP_STR(S3_OP_CreateMultipartUpload), /* NI */
+	OP_STR(S3_OP_CompleteMultipartUpload), /* NI */
+	OP_STR(S3_OP_AbortMultipartUpload), /* NI */
+	OP_STR(S3_OP_UploadPart), /* NI */
+	OP_STR(S3_OP_UploadPartCopy), /* NI */
+	OP_STR(S3_OP_ListParts), /* NI */
+};
+
+const char *s3_op_str(enum s3_api_ops op)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(s3_ops); i++) {
+		if (s3_ops[i].op == op)
+			return s3_ops[i].desc;
+	}
+	return NULL;
+}
+
 int parse_header_complete(http_parser *http)
 {
 	struct s3gw_request *req = http->data;
-	char *len_str;
+	char *p, *host;
 	int ret;
 
-	len_str = fetch_request_header(req, "Content-Length", &ret);
+	p = fetch_request_header(req, "Content-Length", &ret);
 	if (ret) {
 		char *eptr;
 
-		ret = strtoul(len_str, &eptr, 10);
-		if (eptr != len_str)
+		ret = strtoul(p, &eptr, 10);
+		if (eptr != p)
 			req->payload_len = ret;
 	}
+	host = fetch_request_header(req, "Host", &ret);
+	if (ret) {
+		printf("Host: %s\n", host);
+		p = strchr(host, '.');
+		if (p && !strcmp(p + 1, req->ctx->hostport)) {
+			req->bucket = strdup(host);
+			p = strchr(req->bucket, '.');
+			*p = '\0';
+			printf("Bucket: %s\n", req->bucket);
+		}
+	}
+	switch (req->op) {
+	case S3_OP_GetObject:
+		if (!req->key) {
+			if (fetch_request_query(req, "versioning", &ret))
+				req->op = S3_OP_GetBucketVersioning;
+			else if (fetch_request_query(req, "policyStatus", &ret))
+				req->op = S3_OP_GetBucketPolicyStatus;
+			else if (fetch_request_query(req, "delimiter", &ret))
+				req->op = S3_OP_ListObjects;
+			else
+				req->op = S3_OP_ListBuckets;
+		}
+		break;
+	case S3_OP_HeadObject:
+		if (!req->key)
+			req->op = S3_OP_HeadBucket;
+		break;
+	case S3_OP_PutObject:
+		if (!req->key)
+			req->op = S3_OP_CreateBucket;
+		break;
+	case S3_OP_DeleteObject:
+		if (!req->key)
+			req->op = S3_OP_DeleteBucket;
+		break;
+	default:
+		break;
+	}
+	printf("Op: %s\n", s3_op_str(req->op));
 	return 0;
 }
 

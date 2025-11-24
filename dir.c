@@ -282,7 +282,7 @@ out_free:
 }
 
 int dir_create_object(struct s3gw_request *req, struct s3gw_object *obj,
-		      const char *object)
+		      const char *key)
 {
 	char *dirname;
 	int ret;
@@ -293,7 +293,7 @@ int dir_create_object(struct s3gw_request *req, struct s3gw_object *obj,
 	if (ret < 0)
 		return -ENOMEM;
 
-	ret = _create_object(obj, dirname, object,
+	ret = _create_object(obj, dirname, key,
 			     req->payload_len);
 	free(dirname);
 	return ret;
@@ -338,6 +338,7 @@ static int _fill_object(struct s3gw_object *obj, const char *dirname,
 	if (obj->map == MAP_FAILED) {
 		fprintf(stderr, "%s: object %s map error\n",
 			__func__, pathname);
+		obj->map = NULL;
 		ret = -EIO;
 		goto out;
 	}
@@ -520,8 +521,8 @@ int dir_find_objects(struct s3gw_request *req, const char *bucket,
 		printf("checking %s type %d\n",
 		       se->d_name, se->d_type);
 		if (se->d_type == DT_REG) {
-			if (req->object &&
-			    strcmp(req->object, se->d_name))
+			if (req->key &&
+			    strcmp(req->key, se->d_name))
 				continue;
 			if (prefix && strncmp(se->d_name, prefix,
 					      strlen(prefix)))

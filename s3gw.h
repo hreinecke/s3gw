@@ -72,7 +72,7 @@ struct s3gw_request {
 	char *url;
 	char *query;
 	char *bucket;
-	char *object;
+	char *key;
 };
 
 struct s3gw_response {
