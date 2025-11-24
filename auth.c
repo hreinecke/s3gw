@@ -140,9 +140,9 @@ char *uri_encode(const char *value, bool encode_slash)
 	return enc;
 }
 
-char *uri_decode(const char *value)
+char *uri_decode(const char *value, size_t len)
 {
-	size_t len = strlen(value), off = 0;
+	size_t off = 0;
 	char *p, *dec;
 
 	dec = malloc(len + 1);
@@ -315,7 +315,7 @@ char *auth_string_to_sign(struct s3gw_request *req, int *out_len)
 		goto err_free;
 	}
 	if (req->query) {
-		query = malloc(strlen(req->query) + 1);
+		query = malloc(strlen(req->query) * 3 + 1);
 		off = 0;
 		list_for_each_entry(hdr, &req->query_list, list) {
 			char *value = uri_encode(hdr->value, true);

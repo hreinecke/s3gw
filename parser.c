@@ -115,11 +115,9 @@ static int parse_url(http_parser *http, const char *at, size_t len)
 	struct s3gw_request *req = http->data;
 	const char *method = http_method_str(http->method);
 
-	req->url = malloc(len + 1);
+	req->url = uri_decode(at, len);
 	if (!req->url)
 		return 0;
-	memset(req->url, 0, len + 1);
-	memcpy(req->url, at, len); 
 	req->query = strchr(req->url, '?');
 	if (req->query) {
 		*req->query = '\0';

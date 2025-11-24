@@ -230,7 +230,7 @@ void delete_objects(struct s3gw_request *req, struct s3gw_response *resp)
 
 void list_objects(struct s3gw_request *req, struct s3gw_response *resp)
 {
-	struct linked_list objects, prefixes;
+	struct linked_list objects, buckets;
 	struct s3gw_object *o, *t;
 	struct s3gw_header *q;
 	xmlDoc *doc;
@@ -238,7 +238,7 @@ void list_objects(struct s3gw_request *req, struct s3gw_response *resp)
 	xmlNode *root_node, *c_node, *o_node;
 	char *prefix = NULL, *delim = NULL, *marker = NULL;
 	char line[64];
-	int cur = 0, num_objs, num_prefix = 0, line_len, xml_len;
+	int cur = 0, num_objs, num_buckets = 0, line_len, xml_len;
 	unsigned long max_keys = 0;
 	struct tm *tm;
 
@@ -264,17 +264,18 @@ void list_objects(struct s3gw_request *req, struct s3gw_response *resp)
 	}
 	printf("found %d objects\n", num_objs);
 
-	INIT_LINKED_LIST(&prefixes);
+	INIT_LINKED_LIST(&buckets);
 	if (delim || prefix) {
-		num_prefix = dir_find_prefix(req, &prefixes,
-					     prefix, delim, marker);
-		if (num_prefix < 0) {
-			if (num_prefix == -EPERM)
+		num_buckets = dir_find_prefix(req, &buckets,
+					      prefix, delim, marker);
+		if (num_buckets < 0) {
+			if (num_buckets == -EPERM)
 				resp->status = HTTP_STATUS_FORBIDDEN;
 			else
 				resp->status = HTTP_STATUS_NOT_FOUND;
 			return;
 		}
+		printf("found %d buckets\n", num_buckets);
 	}
 	doc = xmlNewDoc((const xmlChar *)"1.0");
 	root_node = xmlNewDocNode(doc, NULL,
@@ -340,15 +341,17 @@ void list_objects(struct s3gw_request *req, struct s3gw_response *resp)
 		free(o);
 		cur++;
 	}
-	if (num_prefix) {
+	if (num_buckets) {
+		struct s3gw_bucket *b, *t_b;
+
 		c_node = xmlNewChild(root_node, NULL,
 				     (const xmlChar *)"CommonPrefixes", NULL);
-		list_for_each_entry_safe(o, t, &prefixes, list) {
+		list_for_each_entry_safe(b, t_b, &buckets, list) {
 			xmlNewChild(c_node, NULL, (const xmlChar *)"Prefix",
-				    (xmlChar *)o->key);
-			list_del_init(&o->list);
-			clear_object(o);
-			free(o);
+				    (xmlChar *)b->name);
+			list_del_init(&b->list);
+			free(b->name);
+			free(b);
 		}
 	}
 		
@@ -360,7 +363,7 @@ void list_objects(struct s3gw_request *req, struct s3gw_response *resp)
 
 void get_object(struct s3gw_request *req, struct s3gw_response *resp)
 {
-	struct s3gw_object *obj;
+	struct s3gw_object *obj = NULL;
 	char line[64], *range;
 	struct tm *tm;
 	unsigned long start = 0, end = 0, size = 0;
@@ -424,12 +427,15 @@ void get_object(struct s3gw_request *req, struct s3gw_response *resp)
 	tm = localtime(&obj->mtime);
 	strftime(line, 64, "%FT%T%z", tm);
 	put_response_header(resp, "Last-Modified", line);
-	etag = bin2hex(obj->etag, 16, &etag_len);
-	if (!etag) {
-		resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
-		goto out_free_obj;
+	if (obj->etag) {
+		etag = bin2hex(obj->etag, 16, &etag_len);
+		if (!etag) {
+			resp->status = HTTP_STATUS_INTERNAL_SERVER_ERROR;
+			goto out_free_obj;
+		}
+		put_response_header(resp, "ETag", etag);
+		free(etag);
 	}
-	put_response_header(resp, "ETag", etag);
 	if (req->op == S3_OP_GetObject) {
 		if (!end)
 			size = resp->obj->size - start;
@@ -445,7 +451,6 @@ void get_object(struct s3gw_request *req, struct s3gw_response *resp)
 		resp->payload_len = obj->size;
 		resp->obj = NULL;
 	}
-	free(etag);
 out_free_obj:
 	if (obj) {
 		clear_object(obj);

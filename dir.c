@@ -156,7 +156,8 @@ int dir_delete_bucket(struct s3gw_request *req, const char *bucket)
 	return ret;
 }
 
-static int find_bucket(char *dirname, char *name, struct linked_list *head)
+static int find_bucket(char *dirname, char *name, char *delim,
+		       struct linked_list *head)
 {
 	struct s3gw_bucket *b;
 	char *pathname;
@@ -179,7 +180,15 @@ static int find_bucket(char *dirname, char *name, struct linked_list *head)
 		ret = -ENOMEM;
 		goto out;
 	}
-	b->name = strdup(name);
+	if (delim) {
+		ret = asprintf(&b->name, "%s%s", name, delim);
+	} else {
+		b->name = strdup(name);
+		if (!b->name)
+			ret = -1;
+	}
+	if (ret < 0)
+		goto out;
 	b->ctime = st.st_ctime;
 	list_add(&b->list, head);
 	printf("Found bucket '%s'\n", b->name);
@@ -218,7 +227,7 @@ int dir_find_buckets(struct s3gw_request *req, struct linked_list *head)
 		printf("checking %s type %d\n",
 		       se->d_name, se->d_type);
 		if (se->d_type == DT_DIR) {
-			ret = find_bucket(dirname, se->d_name, head);
+			ret = find_bucket(dirname, se->d_name, NULL, head);
 			if (ret < 0)
 				break;
 			num++;
@@ -332,24 +341,28 @@ static int _fill_object(struct s3gw_object *obj, const char *dirname,
 		ret = -errno;
 		goto out;
 	}
-	obj->size = st.st_size;
-	obj->map = mmap(NULL, obj->size, PROT_READ, MAP_PRIVATE, fd, 0);
-	close(fd);
-	if (obj->map == MAP_FAILED) {
-		fprintf(stderr, "%s: object %s map error\n",
-			__func__, pathname);
-		obj->map = NULL;
-		ret = -EIO;
-		goto out;
-	}
-	etag = md5sum(obj->map, st.st_size, &etag_len);
+	if ((st.st_mode & S_IFMT) == S_IFREG) {
+		obj->size = st.st_size;
+		obj->map = mmap(NULL, obj->size, PROT_READ, MAP_PRIVATE, fd, 0);
+		close(fd);
+		if (obj->map == MAP_FAILED) {
+			fprintf(stderr, "%s: object %s map error\n",
+				__func__, pathname);
+			obj->map = NULL;
+			ret = -EIO;
+			goto out;
+		}
+		etag = md5sum(obj->map, st.st_size, &etag_len);
 
-	if (!etag) {
-		fprintf(stderr, "md5sum calculation failed\n");
-		etag_len = 0;
+		if (!etag) {
+			fprintf(stderr, "md5sum calculation failed\n");
+			etag_len = 0;
+		}
+		obj->etag = etag;
+		obj->etag_len = etag_len;
+	} else {
+		close(fd);
 	}
-	obj->etag = etag;
-	obj->etag_len = etag_len;
 	obj->mtime = st.st_mtime;
 
 	if (!obj->key)
@@ -551,7 +564,6 @@ int dir_find_prefix(struct s3gw_request *req, struct linked_list *head,
 		    char *prefix, char *delim, char *marker)
 {
 	char *dirname;
-	struct s3gw_object *obj = NULL;
 	int ret, num = 0;
 	struct dirent *se;
 	DIR *sd;
@@ -571,19 +583,15 @@ int dir_find_prefix(struct s3gw_request *req, struct linked_list *head,
 		if (!strcmp(se->d_name, ".") ||
 		    !strcmp(se->d_name, ".."))
 			continue;
-		printf("checking %s type %d\n",
-		       se->d_name, se->d_type);
+		printf("checking %s prefix %s type %d\n",
+		       se->d_name, prefix ? prefix : "", se->d_type);
 		if (se->d_type == DT_DIR) {
 			if (prefix && strncmp(se->d_name, prefix,
 					      strlen(prefix)))
 				continue;
-			if (!obj) {
-				obj = malloc(sizeof(*obj));
-				if (!obj)
-					break;
-				memset(obj, 0, sizeof(*obj));
-			}
-			obj->key = strdup(se->d_name);
+			ret = find_bucket(dirname, se->d_name, delim, head);
+			if (ret < 0)
+				break;
 			num++;
 		}
 	}

@@ -148,7 +148,7 @@ void tcp_loop(struct s3gw_ctx *ctx);
 char *bin2hex(unsigned char *input, int input_len, size_t *out_len);
 unsigned char *hex2bin(char *input, size_t *out_len);
 char *uri_encode(const char *value, bool encode_slash);
-char *uri_decode(const char *value);
+char *uri_decode(const char *value, size_t len);
 unsigned char *hmac_sha256(const void *key, int keylen,
 			   const unsigned char *data, int datalen,
 			   unsigned char *result, unsigned int *resultlen);
