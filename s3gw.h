@@ -107,8 +107,10 @@ int dir_fetch_object(struct s3gw_request *req, struct s3gw_object *obj,
 		     const char *object);
 int dir_delete_object(struct s3gw_request *req, const char *bucket,
 		      const char *object);
-int dir_find_objects(struct s3gw_request *req, const char *bucket,
-		     struct linked_list *head, char *prefix);
+int dir_find_objects(struct s3gw_request *req, struct linked_list *head,
+		     char *prefix, char *delim, char *marker);
+int dir_find_prefix(struct s3gw_request *req, struct linked_list *head,
+		    char *prefix, char *delim, char *marker);
 int dir_splice_objects(struct s3gw_request *req,
 		       char *s_bucket, char *s_obj,
 		       char *d_bucket, char *d_obj);

@@ -230,35 +230,51 @@ void delete_objects(struct s3gw_request *req, struct s3gw_response *resp)
 
 void list_objects(struct s3gw_request *req, struct s3gw_response *resp)
 {
-	struct linked_list top;
+	struct linked_list objects, prefixes;
 	struct s3gw_object *o, *t;
 	struct s3gw_header *q;
 	xmlDoc *doc;
 	xmlNsPtr ns;
 	xmlNode *root_node, *c_node, *o_node;
-	char *prefix = NULL;
+	char *prefix = NULL, *delim = NULL, *marker = NULL;
 	char line[64];
-	int cur = 0, num, line_len, xml_len;
+	int cur = 0, num_objs, num_prefix = 0, line_len, xml_len;
 	unsigned long max_keys = 0;
 	struct tm *tm;
 
-	INIT_LINKED_LIST(&top);
-	num = dir_find_objects(req, req->bucket, &top, prefix);
-	if (num < 0) {
-		if (num == -EPERM)
+	list_for_each_entry(q, &req->query_list, list) {
+		if (!strcmp(q->key, "max-keys"))
+			max_keys = strtoul(q->value, NULL, 10);
+		if (!strcmp(q->key, "prefix"))
+			prefix = q->value;
+		if (!strcmp(q->key, "delimiter"))
+			delim = q->value;
+		if (!strcmp(q->key, "marker"))
+			marker = q->value;
+	}
+
+	INIT_LINKED_LIST(&objects);
+	num_objs = dir_find_objects(req, &objects, prefix, delim, marker);
+	if (num_objs < 0) {
+		if (num_objs == -EPERM)
 			resp->status = HTTP_STATUS_FORBIDDEN;
 		else
 			resp->status = HTTP_STATUS_NOT_FOUND;
 		return;
 	}
-	printf("found %d objects\n", num);
+	printf("found %d objects\n", num_objs);
 
-	list_for_each_entry(q, &req->query_list, list) {
-		if (!strcmp(q->key, "max-keys")) {
-			max_keys = strtoul(q->value, NULL, 10);
+	INIT_LINKED_LIST(&prefixes);
+	if (delim || prefix) {
+		num_prefix = dir_find_prefix(req, &prefixes,
+					     prefix, delim, marker);
+		if (num_prefix < 0) {
+			if (num_prefix == -EPERM)
+				resp->status = HTTP_STATUS_FORBIDDEN;
+			else
+				resp->status = HTTP_STATUS_NOT_FOUND;
+			return;
 		}
-		if (!strcmp(q->key, "prefix"))
-			prefix = q->value;
 	}
 	doc = xmlNewDoc((const xmlChar *)"1.0");
 	root_node = xmlNewDocNode(doc, NULL,
@@ -270,7 +286,11 @@ void list_objects(struct s3gw_request *req, struct s3gw_response *resp)
 		    (xmlChar *)req->bucket);
 	xmlNewChild(root_node, NULL, (const xmlChar *)"Prefix",
 		    (xmlChar *)prefix);
-	xmlNewChild(root_node, NULL, (const xmlChar *)"Marker", NULL);
+	xmlNewChild(root_node, NULL, (const xmlChar *)"Marker",
+		    (xmlChar *)marker);
+	if (delim)
+		xmlNewChild(root_node, NULL, (const xmlChar *)"Delimiter",
+			    (xmlChar *)delim);
 	if (max_keys) {
 		sprintf(line, "%lu", max_keys);
 		xmlNewChild(root_node, NULL, (const xmlChar *)"MaxKeys",
@@ -278,14 +298,16 @@ void list_objects(struct s3gw_request *req, struct s3gw_response *resp)
 	} else
 		xmlNewChild(root_node, NULL, (const xmlChar *)"MaxKeys", NULL);
 
+	if (max_keys > 0 && max_keys < num_objs)
+		num_objs = max_keys;
 	xmlNewChild(root_node, NULL, (const xmlChar *)"IsTruncated",
 		    (const xmlChar *)"false");
 	     
-	list_for_each_entry_safe(o, t, &top, list) {
+	list_for_each_entry_safe(o, t, &objects, list) {
 		char *etag;
 
 		list_del(&o->list);
-		if (max_keys && cur > max_keys) {
+		if (cur > num_objs) {
 			goto clear;
 		}
 		c_node = xmlNewChild(root_node, NULL,
@@ -318,9 +340,18 @@ void list_objects(struct s3gw_request *req, struct s3gw_response *resp)
 		free(o);
 		cur++;
 	}
-	sprintf(line, "%u", num);
-	xmlNewChild(root_node, NULL, (const xmlChar *)"KeyCount",
-		    (xmlChar *)line);
+	if (num_prefix) {
+		c_node = xmlNewChild(root_node, NULL,
+				     (const xmlChar *)"CommonPrefixes", NULL);
+		list_for_each_entry_safe(o, t, &prefixes, list) {
+			xmlNewChild(c_node, NULL, (const xmlChar *)"Prefix",
+				    (xmlChar *)o->key);
+			list_del_init(&o->list);
+			clear_object(o);
+			free(o);
+		}
+	}
+		
 	xmlDocDumpMemory(doc, &resp->payload, &xml_len);
 	resp->payload_len = xml_len;
 	xmlFreeDoc(doc);

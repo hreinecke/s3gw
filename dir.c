@@ -494,8 +494,8 @@ int dir_delete_object(struct s3gw_request *req, const char *bucket,
 	return ret;
 }
 
-int dir_find_objects(struct s3gw_request *req, const char *bucket,
-		     struct linked_list *head, char *prefix)
+int dir_find_objects(struct s3gw_request *req, struct linked_list *head,
+		     char *prefix, char *delim, char *marker)
 {
 	char *dirname;
 	struct s3gw_object *obj = NULL;
@@ -505,7 +505,7 @@ int dir_find_objects(struct s3gw_request *req, const char *bucket,
 
 	ret = asprintf(&dirname, "%s/%s/%s",
 		       req->ctx->base_dir,
-		       req->owner, bucket);
+		       req->owner, req->bucket);
 	if (ret < 0)
 		return -ENOMEM;
 	sd = opendir(dirname);
@@ -538,6 +538,52 @@ int dir_find_objects(struct s3gw_request *req, const char *bucket,
 				list_add(&obj->list, head);
 				obj = NULL;
 			}
+			num++;
+		}
+	}
+	closedir(sd);
+	free(dirname);
+
+	return num;
+}
+
+int dir_find_prefix(struct s3gw_request *req, struct linked_list *head,
+		    char *prefix, char *delim, char *marker)
+{
+	char *dirname;
+	struct s3gw_object *obj = NULL;
+	int ret, num = 0;
+	struct dirent *se;
+	DIR *sd;
+
+	ret = asprintf(&dirname, "%s/%s/%s",
+		       req->ctx->base_dir,
+		       req->owner, req->bucket);
+	if (ret < 0)
+		return -ENOMEM;
+	sd = opendir(dirname);
+	if (!sd) {
+		fprintf(stderr, "Cannot open bucket dir '%s'\n", dirname);
+		free(dirname);
+		return -EPERM;
+	}
+	while ((se = readdir(sd))) {
+		if (!strcmp(se->d_name, ".") ||
+		    !strcmp(se->d_name, ".."))
+			continue;
+		printf("checking %s type %d\n",
+		       se->d_name, se->d_type);
+		if (se->d_type == DT_DIR) {
+			if (prefix && strncmp(se->d_name, prefix,
+					      strlen(prefix)))
+				continue;
+			if (!obj) {
+				obj = malloc(sizeof(*obj));
+				if (!obj)
+					break;
+				memset(obj, 0, sizeof(*obj));
+			}
+			obj->key = strdup(se->d_name);
 			num++;
 		}
 	}
