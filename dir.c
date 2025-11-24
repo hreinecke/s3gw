@@ -156,7 +156,7 @@ int dir_delete_bucket(struct s3gw_request *req, const char *bucket)
 	return ret;
 }
 
-static int find_bucket(char *dirname, char *name, char *delim,
+static int fill_bucket(char *dirname, char *name, char *delim,
 		       struct linked_list *head)
 {
 	struct s3gw_bucket *b;
@@ -180,13 +180,7 @@ static int find_bucket(char *dirname, char *name, char *delim,
 		ret = -ENOMEM;
 		goto out;
 	}
-	if (delim) {
-		ret = asprintf(&b->name, "%s%s", name, delim);
-	} else {
-		b->name = strdup(name);
-		if (!b->name)
-			ret = -1;
-	}
+	ret = asprintf(&b->name, "%s%s", name, delim ? delim : "");
 	if (ret < 0)
 		goto out;
 	b->ctime = st.st_ctime;
@@ -197,12 +191,55 @@ out:
 	return ret;
 }
 
+int find_bucket(char *dirname, char *prefix, char *delim,
+		struct linked_list *head)
+{
+	struct dirent *se;
+	char *path;
+	DIR *sd;
+	int ret, num = 0;
+
+	ret = asprintf(&path, "%s%s", dirname,
+		       prefix ? prefix : "");
+	sd = opendir(path);
+	if (!sd) {
+		fprintf(stderr, "Cannot open %s\n", path);
+		free(path);
+		return -EPERM;
+	}
+	printf("reading directory %s\n", path);
+	while ((se = readdir(sd))) {
+		char *new_path;
+
+		if (!strcmp(se->d_name, ".") ||
+		    !strcmp(se->d_name, ".."))
+			continue;
+		ret = asprintf(&new_path, "%s%s%s",
+			       prefix ? prefix : "", delim, se->d_name);
+		printf("checking %s (%s) type %d\n",
+		       se->d_name, path, se->d_type);
+		if (se->d_type == DT_DIR) {
+			ret = find_bucket(dirname, new_path, delim, head);
+			if (ret < 0)
+				goto next_bucket;
+
+			num += ret;
+			ret = fill_bucket(dirname, new_path, NULL, head);
+			if (ret < 0)
+				goto next_bucket;
+			num++;
+		}
+	next_bucket:
+		free(new_path);
+	}
+	closedir(sd);
+	return num;
+}
+
 int dir_find_buckets(struct s3gw_request *req, struct linked_list *head)
 {
 	char *dirname;
-	int ret, num = 0;
-	struct dirent *se;
-	DIR *sd;
+	int ret;
 
 	if (!req->owner) {
 		fprintf(stderr, "No owner set\n");
@@ -213,30 +250,10 @@ int dir_find_buckets(struct s3gw_request *req, struct linked_list *head)
 		       req->owner);
 	if (ret < 0)
 		return -ENOMEM;
-	sd = opendir(dirname);
-	if (!sd) {
-		fprintf(stderr, "Cannot open %s\n", dirname);
-		free(dirname);
-		return -EPERM;
-	}
-	printf("reading directory %s\n", dirname);
-	while ((se = readdir(sd))) {
-		if (!strcmp(se->d_name, ".") ||
-		    !strcmp(se->d_name, ".."))
-			continue;
-		printf("checking %s type %d\n",
-		       se->d_name, se->d_type);
-		if (se->d_type == DT_DIR) {
-			ret = find_bucket(dirname, se->d_name, NULL, head);
-			if (ret < 0)
-				break;
-			num++;
-		}
-	}	
-	closedir(sd);
-	free(dirname);
 
-	return num;
+	ret = find_bucket(dirname, NULL, "/", head);
+	free(dirname);
+	return ret;
 }
 
 static int _create_object(struct s3gw_object *obj, const char *dirname,
@@ -563,40 +580,21 @@ int dir_find_objects(struct s3gw_request *req, struct linked_list *head,
 int dir_find_prefix(struct s3gw_request *req, struct linked_list *head,
 		    char *prefix, char *delim, char *marker)
 {
-	char *dirname;
+	char *dirname, *p;
 	int ret, num = 0;
-	struct dirent *se;
-	DIR *sd;
 
-	ret = asprintf(&dirname, "%s/%s/%s",
+	ret = asprintf(&dirname, "%s/%s",
 		       req->ctx->base_dir,
-		       req->owner, req->bucket);
+		       req->owner);
 	if (ret < 0)
 		return -ENOMEM;
-	sd = opendir(dirname);
-	if (!sd) {
-		fprintf(stderr, "Cannot open bucket dir '%s'\n", dirname);
+	ret = asprintf(&p, "%s%s", delim, req->bucket);
+	if (ret < 0) {
 		free(dirname);
-		return -EPERM;
+		return -ENOMEM;
 	}
-	while ((se = readdir(sd))) {
-		if (!strcmp(se->d_name, ".") ||
-		    !strcmp(se->d_name, ".."))
-			continue;
-		printf("checking %s prefix %s type %d\n",
-		       se->d_name, prefix ? prefix : "", se->d_type);
-		if (se->d_type == DT_DIR) {
-			if (prefix && strncmp(se->d_name, prefix,
-					      strlen(prefix)))
-				continue;
-			ret = find_bucket(dirname, se->d_name, delim, head);
-			if (ret < 0)
-				break;
-			num++;
-		}
-	}
-	closedir(sd);
+	ret = find_bucket(dirname, p, delim, head);
+	free(p);
 	free(dirname);
-
 	return num;
 }
