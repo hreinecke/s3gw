@@ -11,6 +11,15 @@
 #include "s3_api.h"
 #include "s3gw.h"
 
+void free_header(struct s3gw_header *hdr)
+{
+	if (hdr->value)
+		free(hdr->value);
+	if (hdr->key)
+		free(hdr->key);
+	free(hdr);
+}
+
 void init_request(struct s3gw_ctx *ctx, struct s3gw_request *req)
 {
 	memset(req, 0, sizeof(*req));
@@ -31,39 +40,22 @@ void reset_request(struct s3gw_request *req)
 		free(req->bucket);
 		req->bucket = NULL;
 	}
-	req->object = NULL;
+	if (req->key) {
+		free(req->key);
+		req->key = NULL;
+	}
 
 	list_for_each_entry_safe(hdr, tmp, &req->hdr_list, list) {
 		list_del_init(&hdr->list);
-		if (hdr->value)
-			free(hdr->value);
-		if (hdr->key)
-			free(hdr->key);
-		free(hdr);
+		free_header(hdr);
 	}
 	list_for_each_entry_safe(hdr, tmp, &req->auth_list, list) {
 		list_del_init(&hdr->list);
-		if (hdr->value) {
-			free(hdr->value);
-			hdr->value = NULL;
-		}
-		if (hdr->key) {
-			free(hdr->key);
-			hdr->key = NULL;
-		}
-		free(hdr);
+		free_header(hdr);
 	}
 	list_for_each_entry_safe(hdr, tmp, &req->query_list, list) {
 		list_del_init(&hdr->list);
-		if (hdr->value) {
-			free(hdr->value);
-			hdr->value = NULL;
-		}
-		if (hdr->key) {
-			free(hdr->key);
-			hdr->key = NULL;
-		}
-		free(hdr);
+		free_header(hdr);
 	}
 	if (req->owner) {
 		free(req->owner);
