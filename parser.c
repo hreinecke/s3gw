@@ -214,26 +214,29 @@ const char *s3_op_str(enum s3_api_ops op)
 int parse_header_complete(http_parser *http)
 {
 	struct s3gw_request *req = http->data;
-	char *p, *host;
+	struct s3gw_header *hdr;
 	int ret;
 
-	p = fetch_request_header(req, "Content-Length", &ret);
-	if (ret) {
-		char *eptr;
+	list_for_each_entry(hdr, &req->hdr_list, list) {
+		printf("Header '%s': %s\n",
+		       hdr->key, hdr->value ? hdr->value : "");
+		if (!strcasecmp(hdr->key, "Content-Length")) {
+			char *eptr;
 
-		ret = strtoul(p, &eptr, 10);
-		if (eptr != p)
-			req->payload_len = ret;
-	}
-	host = fetch_request_header(req, "Host", &ret);
-	if (ret) {
-		printf("Host: %s\n", host);
-		p = strchr(host, '.');
-		if (p && !strcmp(p + 1, req->ctx->hostport)) {
-			req->bucket = strdup(host);
-			p = strchr(req->bucket, '.');
-			*p = '\0';
-			printf("Bucket: %s\n", req->bucket);
+			ret = strtoul(hdr->value, &eptr, 10);
+			if (eptr != hdr->value)
+				req->payload_len = ret;
+		}
+		if (!strcasecmp(hdr->key, "Host")) {
+			char *p;
+
+			p = strchr(hdr->value, '.');
+			if (p && !strcmp(p + 1, req->ctx->hostport)) {
+				req->bucket = strdup(hdr->value);
+				p = strchr(req->bucket, '.');
+				*p = '\0';
+				printf("Bucket: %s\n", req->bucket);
+			}
 		}
 	}
 	switch (req->op) {
