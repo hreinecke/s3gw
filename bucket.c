@@ -92,15 +92,31 @@ void list_buckets(struct s3gw_request *req, struct s3gw_response *resp)
 {
 	struct linked_list top;
 	struct s3gw_bucket *b, *t;
+	struct s3gw_header *q;
 	xmlDoc *doc;
 	xmlNode *root_node, *buckets_node, *b_node, *owner_node;
 	int xml_len;
 	char line[64];
+	const char *region = NULL, *prefix = NULL;
 	struct tm *tm;
-	int ret;
+	unsigned long max_buckets;
+	int ret, num = 0;
 
+	list_for_each_entry(q, &req->query_list, list) {
+		if (!strcmp(q->key, "bucket-region"))
+			region = q->value;
+		if (!strcmp(q->key, "max-buckets"))
+			max_buckets = strtoul(q->value, NULL, 10);
+		if (!strcmp(q->key, "prefix"))
+			prefix = q->value;
+	}
+	if (region && strcmp(region, req->region)) {
+		fprintf(stderr, "Region '%s' not supported\n", region);
+		resp->status = HTTP_STATUS_NOT_FOUND;
+		return;
+	}
 	INIT_LINKED_LIST(&top);
-	ret = dir_find_buckets(req, &top);
+	ret = dir_find_buckets(req, prefix, &top);
 	if (ret < 0 && ret != -EPERM) {
 		resp->status = HTTP_STATUS_NOT_FOUND;
 		return;
@@ -132,6 +148,8 @@ void list_buckets(struct s3gw_request *req, struct s3gw_response *resp)
 				   (const xmlChar *)"Buckets", NULL);
 	list_for_each_entry_safe(b, t, &top, list) {
 		list_del_init(&b->list);
+		if (num > max_buckets)
+			goto skip_bucket;
 		b_node = xmlNewChild(buckets_node, NULL,
 				     (const xmlChar *)"Bucket", NULL);
 		tm = localtime(&b->ctime);
@@ -141,6 +159,10 @@ void list_buckets(struct s3gw_request *req, struct s3gw_response *resp)
 			    (xmlChar *)line);
 		xmlNewChild(b_node, NULL,
 			    (const xmlChar *)"Name", (xmlChar *)b->name);
+	skip_bucket:
+		free(b->name);
+		free(b);
+		num++;
 	}
 	owner_node = xmlNewChild(root_node, NULL,
 				 (const xmlChar *)"Owner", NULL);
@@ -158,7 +180,7 @@ void check_bucket(struct s3gw_request *req, struct s3gw_response *resp)
 	int ret;
 
 	INIT_LINKED_LIST(&top);
-	ret = dir_find_buckets(req, &top);
+	ret = dir_find_buckets(req, NULL, &top);
 	if (ret < 0) {
 		if (ret == -EPERM)
 			resp->status = HTTP_STATUS_FORBIDDEN;

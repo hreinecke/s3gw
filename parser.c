@@ -21,6 +21,16 @@ static int parse_body(http_parser *http, const char *body, size_t len)
 
 	if (!len)
 		return 0;
+	if (req->op == S3_OP_PutObject) {
+		req->payload = malloc(len);
+		if (!req->payload) {
+			fprintf(stderr, "failed to allocate payload\n");
+			return 0;
+		}
+		memcpy(req->payload, body, len);
+		printf("body: %ld bytes\n", len);
+		return 0;
+	}
 	req->xml = xmlParseMemory(body, len);
 	if (!req->xml) {
 		fprintf(stderr, "failed to parse xml body\n");

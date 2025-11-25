@@ -156,7 +156,7 @@ int dir_delete_bucket(struct s3gw_request *req, const char *bucket)
 	return ret;
 }
 
-static int fill_bucket(char *dirname, char *name, char *delim,
+static int fill_bucket(char *dirname, char *name, const char *delim,
 		       struct linked_list *head)
 {
 	struct s3gw_bucket *b;
@@ -164,7 +164,7 @@ static int fill_bucket(char *dirname, char *name, char *delim,
 	struct stat st;
 	int ret;
 
-	ret = asprintf(&pathname, "%s/%s", dirname, name);
+	ret = asprintf(&pathname, "%s%s%s", dirname, delim, name);
 	if (ret < 0)
 		return -errno;
 
@@ -180,7 +180,7 @@ static int fill_bucket(char *dirname, char *name, char *delim,
 		ret = -ENOMEM;
 		goto out;
 	}
-	ret = asprintf(&b->name, "%s%s", name + 1, delim ? delim : "");
+	ret = asprintf(&b->name, "%s%s", name, delim);
 	if (ret < 0)
 		goto out;
 	b->ctime = st.st_ctime;
@@ -191,7 +191,7 @@ out:
 	return ret;
 }
 
-int find_bucket(char *dirname, char *prefix, char *delim,
+int find_bucket(char *base, char *key, const char *prefix, const char *delim,
 		struct linked_list *head)
 {
 	struct dirent *se;
@@ -199,8 +199,9 @@ int find_bucket(char *dirname, char *prefix, char *delim,
 	DIR *sd;
 	int ret, num = 0;
 
-	ret = asprintf(&path, "%s%s", dirname,
-		       prefix ? prefix : "");
+	ret = asprintf(&path, "%s%s%s", base,
+		       key ? delim : "",
+		       key ? key : "");
 	sd = opendir(path);
 	if (!sd) {
 		fprintf(stderr, "Cannot open %s\n", path);
@@ -209,34 +210,40 @@ int find_bucket(char *dirname, char *prefix, char *delim,
 	}
 	printf("reading directory %s\n", path);
 	while ((se = readdir(sd))) {
-		char *new_path;
+		char *new_key;
 
 		if (!strcmp(se->d_name, ".") ||
 		    !strcmp(se->d_name, ".."))
 			continue;
-		ret = asprintf(&new_path, "%s%s%s",
-			       prefix ? prefix : "", delim, se->d_name);
+		if (prefix && strncmp(se->d_name, prefix, strlen(prefix))) {
+			printf("skipping %s (%s)\n", se->d_name, path);
+			continue;
+		}
+		ret = asprintf(&new_key, "%s%s%s",
+			       key ? key : "", key ? delim : "", se->d_name);
 		printf("checking %s (%s) type %d\n",
 		       se->d_name, path, se->d_type);
 		if (se->d_type == DT_DIR) {
-			ret = find_bucket(dirname, new_path, delim, head);
+			ret = find_bucket(base, new_key, prefix,
+					  delim, head);
 			if (ret < 0)
 				goto next_bucket;
 
 			num += ret;
-			ret = fill_bucket(dirname, new_path, delim, head);
+			ret = fill_bucket(base, new_key, delim, head);
 			if (ret < 0)
 				goto next_bucket;
 			num++;
 		}
 	next_bucket:
-		free(new_path);
+		free(new_key);
 	}
 	closedir(sd);
 	return num;
 }
 
-int dir_find_buckets(struct s3gw_request *req, struct linked_list *head)
+int dir_find_buckets(struct s3gw_request *req, const char *prefix,
+		     struct linked_list *head)
 {
 	char *dirname;
 	int ret;
@@ -251,7 +258,7 @@ int dir_find_buckets(struct s3gw_request *req, struct linked_list *head)
 	if (ret < 0)
 		return -ENOMEM;
 
-	ret = find_bucket(dirname, NULL, "/", head);
+	ret = find_bucket(dirname, NULL, prefix, "/", head);
 	free(dirname);
 	return ret;
 }
@@ -588,7 +595,7 @@ int dir_find_prefix(struct s3gw_request *req, struct linked_list *head,
 		       req->owner, req->bucket);
 	if (ret < 0)
 		return -ENOMEM;
-	ret = find_bucket(dirname, NULL, delim, head);
+	ret = find_bucket(dirname, NULL, prefix, delim, head);
 	free(dirname);
 	return ret;
 }

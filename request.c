@@ -129,6 +129,8 @@ static int write_request(struct s3gw_request *req, char *buf, size_t len,
 	struct msghdr msg;
 	struct iovec iov;
 
+	if (!req)
+		return 0;
 	if (req->fd) {
 		int ret;
 		size_t off = 0;
@@ -180,9 +182,9 @@ size_t handle_request(struct s3gw_request *req, struct s3gw_response *resp)
 	ret = http_parser_execute(http, &settings,
 				  (const char *)buf, nread);
 	if (ret == 0 || http->http_errno) {
-		fprintf(stderr, "failed to parse HTTP, errno %d\n",
-			http->http_errno);
-		req = NULL;
+		fprintf(stderr, "failed to parse HTTP, errno %s (%s)\n",
+			http_errno_name(http->http_errno),
+			http_errno_description(http->http_errno));
 		goto format_response;
 	}
 	if (ret < nread)
@@ -193,7 +195,7 @@ size_t handle_request(struct s3gw_request *req, struct s3gw_response *resp)
 		goto format_response;
 	}
 read_payload:
-	if (req->payload_len && !req->xml) {
+	if (req->payload_len && !req->xml && !req->payload) {
 		size_t plen;
 
 		if (resp->obj) {
