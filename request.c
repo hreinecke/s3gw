@@ -161,8 +161,9 @@ size_t handle_request(struct s3gw_request *req, struct s3gw_response *resp)
 	http_parser_settings settings;
 	size_t nread;
 	size_t nwritten = 0;
-	size_t total = 0;
+	size_t total = 0, remaining = 0;
 	int ret, resp_len;
+	bool intermediate = false;
 
 	setup_parser(&settings);
 
@@ -192,39 +193,81 @@ size_t handle_request(struct s3gw_request *req, struct s3gw_response *resp)
 
 	if (fetch_request_header(req, "Expect", &resp_len)) {
 		printf("Sending intermediate status\n");
+		intermediate = true;
+		goto format_response;
+	}
+	if (req->expected_len) {
+		remaining = req->expected_len;
+		if (req->payload_len)
+			remaining -= req->payload_len;
+	}
+	if (remaining) {
+		printf("Initiate transfer of %lu/%lu bytes\n",
+		       remaining, req->expected_len);
 		goto format_response;
 	}
 read_payload:
-	if (req->payload_len && !req->xml && !req->payload) {
-		size_t plen;
+	if (remaining && !req->xml) {
+		unsigned char *payload = req->payload;
+		size_t rlen, plen = req->payload_len;
 
 		if (resp->obj) {
-			printf("streaming %ld bytes of payload\n",
-			       req->payload_len);
+			if (req->payload) {
+				memcpy(resp->obj->map, req->payload, plen);
+				free(req->payload);
+				payload = resp->obj->map + plen;
+				plen = remaining;
+			} else {
+				payload = resp->obj->map;
+				plen = resp->obj->size;
+			}
+			printf("streaming %ld/%ld bytes of payload\n",
+			       remaining, req->expected_len);
 			req->payload = resp->obj->map;
+			req->payload_len = resp->obj->size;
+		} else if (payload) {
+			printf("appending %ld/%ld bytest of payload\n",
+			       remaining, req->expected_len);
+			req->payload = malloc(req->expected_len);
+			memcpy(req->payload, payload, plen);
+			free(payload);
+			payload = req->payload + plen;
+			plen = remaining;
 		} else {
-			printf("reading %ld bytes of payload\n",
-			       req->payload_len);
-			req->payload = malloc(req->payload_len);
+			printf("reading %ld/%ld bytes of payload\n",
+			       remaining, req->expected_len);
+			req->payload = malloc(req->expected_len);
+			req->payload_len = req->expected_len;
+			payload = req->payload;
+			plen = remaining;
 		}
-		ret = read_request(req, (char *)req->payload,
-				   req->payload_len, &plen, true);
-		nread += plen;
-		if (resp->obj)
+	read_next:
+		ret = read_request(req, (char *)payload, plen,
+				   &rlen, true);
+		nread += rlen;
+		remaining -= rlen;
+		if (resp->obj && req->payload) {
 			req->payload = NULL;
+			req->payload_len = 0;
+		}
 		if (ret < 0) {
 			fprintf(stderr,
 				"Error %d after reading %lu bytes payload\n",
-				errno, plen);
+				errno, rlen);
 			return nread;
 		}
 		if (ret == 0) {
 			fprintf(stderr,
 				"Connection closed after reading %lu bytes payload\n",
-				plen);
+				rlen);
 			return nread;
 		}
-		printf("read %ld bytes of payload\n", plen);
+		printf("read %ld/%ld bytes of payload\n", rlen, plen);
+		if (remaining) {
+			payload += rlen;
+			plen -= rlen;
+			goto read_next;
+		}
 	}
 format_response:
 	resp_hdr = format_response(req, resp, &resp_len);
@@ -232,6 +275,10 @@ format_response:
 		fprintf(stderr, "Error formatting response\n");
 		resp_hdr = error_response;
 		resp_len = strlen(error_response);
+	}
+	if (remaining && !intermediate) {
+		printf("transfer %ld bytes\n", remaining);
+		goto read_payload;
 	}
 	printf("Response (len %d + %lu):\n%s\n",
 	       resp_len, resp->payload_len, resp_hdr);

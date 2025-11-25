@@ -327,7 +327,7 @@ int dir_create_object(struct s3gw_request *req, struct s3gw_object *obj,
 		return -ENOMEM;
 
 	ret = _create_object(obj, dirname, key,
-			     req->payload_len);
+			     req->expected_len);
 	free(dirname);
 	return ret;
 }

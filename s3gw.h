@@ -61,6 +61,7 @@ struct s3gw_request {
 	xmlDoc *xml;
 	unsigned char *payload;
 	size_t payload_len;
+	size_t expected_len;
 	enum s3_api_ops op;
 	struct linked_list hdr_list;
 	struct linked_list auth_list;

@@ -28,6 +28,7 @@ static int parse_body(http_parser *http, const char *body, size_t len)
 			return 0;
 		}
 		memcpy(req->payload, body, len);
+		req->payload_len = len;
 		printf("body: %ld bytes\n", len);
 		return 0;
 	}
@@ -225,7 +226,7 @@ int parse_header_complete(http_parser *http)
 
 			ret = strtoul(hdr->value, &eptr, 10);
 			if (eptr != hdr->value)
-				req->payload_len = ret;
+				req->expected_len = ret;
 		}
 		if (!strcasecmp(hdr->key, "Host")) {
 			char *p;
