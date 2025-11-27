@@ -67,6 +67,10 @@ void reset_request(struct s3gw_request *req)
 		free(req->payload);
 		req->payload = NULL;
 	}
+	if (req->url) {
+		free(req->url);
+		req->url = NULL;
+	}
 	req->next_hdr = NULL;
 	req->op = S3_OP_Unknown;
 }
@@ -229,17 +233,16 @@ size_t handle_request(struct s3gw_request *req, struct s3gw_response *resp)
 	if (ret < nread)
 		printf("%ld trailing bytes on input\n", nread - ret);
 
-	if (fetch_request_header(req, "Expect", &resp_len)) {
-		printf("Sending intermediate status\n");
-		intermediate = true;
-		goto format_response;
-	}
 	if (req->expected_len) {
 		remaining = req->expected_len;
 		if (req->payload_len)
 			remaining -= req->payload_len;
 	}
 	if (remaining) {
+		if (fetch_request_header(req, "Expect", &resp_len)) {
+			printf("Sending intermediate status\n");
+			intermediate = true;
+		}
 		printf("Initiate transfer of %lu/%lu bytes\n",
 		       remaining, req->expected_len);
 		goto format_response;
@@ -324,11 +327,15 @@ format_response:
 	if (resp->obj) {
 		printf("Clear response object\n");
 		resp->payload = NULL;
-		resp->payload_len = 0;
 		clear_object(resp->obj);
 		free(resp->obj);
-		resp->obj = NULL;
+	} else if (resp->payload) {
+		free(resp->payload);
+		resp->payload = NULL;
 	}
+	resp->payload_len = 0;
+	resp->obj = NULL;
+
 out_free:
 	if (resp_hdr != error_response)
 		free(resp_hdr);

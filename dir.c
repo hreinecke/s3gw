@@ -239,6 +239,7 @@ int find_bucket(char *base, char *key, const char *prefix, const char *delim,
 		free(new_key);
 	}
 	closedir(sd);
+	free(path);
 	return num;
 }
 

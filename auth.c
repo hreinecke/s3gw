@@ -269,11 +269,6 @@ char *auth_string_to_sign(struct s3gw_request *req, int *out_len)
 		goto cleanup_md;
 	}
 
-	request_hash = malloc(request_len);
-	if (request_hash == NULL) {
-		fprintf(stderr, "No memory.\n");
-		goto cleanup;
-	}
 	md_ctx = EVP_MD_CTX_new();
 	if (md_ctx == NULL) {
 		fprintf(stderr, "EVP_MD_CTX_new failed.\n");
@@ -350,20 +345,28 @@ char *auth_string_to_sign(struct s3gw_request *req, int *out_len)
 		}
 		hdr_key = strtok_r(NULL, ";", &save);
 	}
+	free(hdrlist);
 	asprintf(&input, "\n%s\n", sig_hdr);
 	EVP_DigestUpdate(md_ctx, input, strlen(input));
 	free(input);
 	EVP_DigestUpdate(md_ctx, payload_hash, strlen(payload_hash));
 
+	request_hash = malloc(request_len);
+	if (request_hash == NULL) {
+		fprintf(stderr, "No memory.\n");
+		goto cleanup;
+	}
 	if (EVP_DigestFinal(md_ctx, request_hash, &request_len) != 1) {
 		fprintf(stderr, "EVP_DigestFinal() failed.\n");
-		goto err_free;
+		free(request_hash);
+		goto cleanup;
 	}
 	payload_hash = bin2hex(request_hash, request_len, &hash_len);
 	asprintf(&output, "%s\n%s\n%s\n%s", "AWS4-HMAC-SHA256",
 		 tstamp, scope, payload_hash);
 	*out_len = strlen(output);
 	free(payload_hash);
+	free(request_hash);
 cleanup:
 	EVP_MD_CTX_free(md_ctx);
 cleanup_md:
@@ -444,10 +447,12 @@ char *auth_sign_str(struct s3gw_request *req, char *str_to_sign, int *out_len)
 	}
 
 	asprintf(&key, "AWS4%s", secret);
+	free(secret);
 	if (!hmac_sha256((const unsigned char *)key, strlen(key),
 			 (const unsigned char *)req->tstamp,
 			 strlen(req->tstamp), date_key, &date_key_len)) {
 		fprintf(stderr, "Failed to generate date key\n");
+		free(key);
 		goto out_free;
 	}
 	free(key);

@@ -29,7 +29,7 @@ int put_response_header(struct s3gw_response *resp, const char *key,
 
 char *gen_response_header(struct s3gw_response *resp, int *outlen)
 {
-	struct s3gw_header *hdr;
+	struct s3gw_header *hdr, *tmp;
 	time_t now = time(NULL);
 	struct tm *tm;
 	char *header, line[64];
@@ -65,14 +65,18 @@ char *gen_response_header(struct s3gw_response *resp, int *outlen)
 		return NULL;
 	}
 	off = ret;
-	list_for_each_entry(hdr, &resp->resp_hdr_list, list) {
-		if (hdr->value)
+	list_for_each_entry_safe(hdr, tmp, &resp->resp_hdr_list, list) {
+		list_del_init(&hdr->list);
+		if (hdr->value) {
 			ret = sprintf(header + off,
 				       "%s: %s\r\n",
 				       hdr->key, hdr->value);
-		else
+			free(hdr->value);
+		} else
 			ret = sprintf(header + off, "%s\r\n",
 				       hdr->key);
+		free(hdr->key);
+		free(hdr);
 		if (ret < 0) {
 			free(header);
 			return NULL;

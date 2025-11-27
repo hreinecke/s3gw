@@ -422,6 +422,7 @@ void get_object(struct s3gw_request *req, struct s3gw_response *resp)
 			}
 			size = start - end;
 		}
+		free(s);
 	}
 
 	tm = localtime(&obj->mtime);
@@ -438,11 +439,11 @@ void get_object(struct s3gw_request *req, struct s3gw_response *resp)
 	}
 	if (req->op == S3_OP_GetObject) {
 		if (!end)
-			size = resp->obj->size - start;
-		else if (end - start < resp->obj->size)
+			size = obj->size - start;
+		else if (end - start < obj->size)
 			size = end - start;
 		else
-			size = resp->obj->size;
+			size = obj->size;
 		resp->obj = obj;
 		resp->payload = resp->obj->map + start;
 		resp->payload_len = size;
